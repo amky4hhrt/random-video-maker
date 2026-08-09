@@ -1,0 +1,23 @@
+# Ignore everything in the folder by default
+*
+# But don't ignore directories (so we can traverse them)
+!*/
+
+# Track specific Python files and configs
+!*.py
+!.gitignore
+!README.md
+
+# Explictly ignore generated and heavy folders (just to be safe)
+english_long_assets/
+hindi_long_assets/
+english_short_assets/
+hindi_short_assets/
+output/
+music/
+sfx/
+Flow_Prototype/
+__pycache__/
+.idea/
+.venv/
+*.ipynb
