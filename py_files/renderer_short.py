@@ -61,7 +61,7 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
         vf = build_ken_burns_filter(camera_movement, frames, WIDTH, HEIGHT, profile)
             
         out_clip = os.path.join(temp_dir, f"clip_{i}_{sid}.mp4")
-        cmd = ["ffmpeg", "-y", "-loop", "1", "-i", img, "-t", str(s_dur), "-vf", vf] + _video_encode_args("fast") + [out_clip]
+        cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", img, "-t", str(s_dur), "-vf", vf] + _video_encode_args("fast") + [out_clip]
         if run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})"):
             clip_paths.append(out_clip)
             clip_durations.append(s_dur)

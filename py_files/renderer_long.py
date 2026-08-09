@@ -162,7 +162,7 @@ def build_ken_burns_filter(camera_movement: str, frames: int, width: int, height
     return (
         f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},"
         f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={d}:s={width}x{height}:fps=30,"
-        f"format=yuv420p"
+        f"fps=30,format=yuv420p"
     )
 
 def run_ffmpeg(cmd: list, label: str) -> bool:
@@ -346,22 +346,26 @@ def _xfade_stitch(clip_paths, output_path, xfade_duration, clip_durations):
             except:
                 durations.append(5.0)  # fallback
     
-    xd = min(xfade_duration, 0.5)  # safety cap per transition
-    
-    # Calculate cumulative offset for each xfade
-    # First xfade happens at: duration_of_clip_0 - xfade_duration
-    # Second xfade: (dur_0 + dur_1 - xfade) - xfade = dur_0 + dur_1 - 2*xfade
+    # We need to cap the transition duration for EACH transition 
+    # to be at most half of the shortest clip involved.
     cumulative_offset = 0.0
+    current_xd = 0.0
     
     for i in range(n - 1):
         in_a = f"[{i}:v]" if i == 0 else f"[v{i}]"
         in_b = f"[{i+1}:v]"
         out_label = f"[v{i+1}]" if i < n - 2 else "[vout]"
         
-        cumulative_offset += durations[i] - (xd if i > 0 else 0)
-        offset = max(0, cumulative_offset - xd)
+        # Calculate dynamic xfade duration for this specific cut
+        # It cannot be longer than xfade_duration, 0.5s, or half the duration of either clip involved.
+        dur_a_remaining = durations[i] - (current_xd if i > 0 else 0)
+        current_xd = min(xfade_duration, 0.5, dur_a_remaining / 2.1, durations[i+1] / 2.1)
+        current_xd = max(0.05, current_xd) # Ensure it doesn't go below 50ms
         
-        filter_parts.append(f"{in_a}{in_b}xfade=transition=fade:duration={xd}:offset={offset:.3f}{out_label}")
+        cumulative_offset += durations[i] - (current_xd if i > 0 else 0)
+        offset = max(0, cumulative_offset - current_xd)
+        
+        filter_parts.append(f"{in_a}{in_b}xfade=transition=fade:duration={current_xd:.3f}:offset={offset:.3f}{out_label}")
     
     filter_str = ";".join(filter_parts)
     cmd.extend(["-filter_complex", filter_str, "-map", "[vout]"] + _video_encode_args("fast") + [output_path])
@@ -422,7 +426,7 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
         vf = build_ken_burns_filter(camera_movement, frames, WIDTH, HEIGHT, profile)
             
         out_clip = os.path.join(temp_dir, f"clip_{i}_{sid}.mp4")
-        cmd = ["ffmpeg", "-y", "-loop", "1", "-i", img, "-t", str(s_dur), "-vf", vf] + _video_encode_args("fast") + [out_clip]
+        cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", img, "-t", str(s_dur), "-vf", vf] + _video_encode_args("fast") + [out_clip]
         if run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})"):
             clip_paths.append(out_clip)
             clip_durations.append(s_dur)
