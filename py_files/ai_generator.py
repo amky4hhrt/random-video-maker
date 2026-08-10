@@ -309,7 +309,7 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, is_sh
         for l in char_data.get("locations", []) for v in l.get("variants", [])
     ) or "(none)"
     
-    pacing_rule = "FLEXIBLE 3-4 SECOND TARGET"
+    pacing_rule = "FLEXIBLE 7-10 SECOND TARGET"
     if is_short:
         pacing_rule = "FAST-PACED VERTICAL (9:16) 1-2 SECOND TARGET. Frame for vertical orientation."
     
