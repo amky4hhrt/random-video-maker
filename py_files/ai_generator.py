@@ -12,6 +12,8 @@ TOGETHER_MODEL = "deepseek-ai/DeepSeek-V4-Flash-0731"
 # - "deepseek-ai/DeepSeek-V4-Pro"
 # - "meta-llama/Llama-3.3-70B-Instruct-Turbo"
 
+CHUNK_DURATION_SECONDS = 180  # 3 minutes per chunk for Director Pass
+
 # Assuming the user will set GEMINI_API_KEY in environment before running
 def get_gemini_client():
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -206,9 +208,95 @@ Write 'reference_prompt' for each stage/variant using: \"a bold, highly detailed
         json.dump(result, f, indent=4)
     return result
 
+def _split_transcript_into_chunks(transcript_data, chunk_duration=CHUNK_DURATION_SECONDS):
+    """Split transcript words into time-based chunks at sentence boundaries.
+    
+    Returns a list of chunks, each containing:
+      - 'words': the raw word-level transcript entries for that chunk
+      - 'start_time' / 'end_time': the time boundaries
+      - 'chunk_index': for logging
+    """
+    words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
+    if not words:
+        return []
+    
+    total_duration = words[-1]['end'] - words[0]['start']
+    
+    # If short enough, return a single chunk (no splitting needed)
+    if total_duration <= chunk_duration * 1.3:
+        return [{
+            "words": words,
+            "start_time": words[0]['start'],
+            "end_time": words[-1]['end'],
+            "chunk_index": 0
+        }]
+    
+    # Group words into sentences first (using punctuation and pause detection)
+    punctuation_marks = ['.', '।', '!', '?', '...']
+    sentences = []  # Each: {"words": [...], "start": float, "end": float}
+    current_words = []
+    sentence_start = None
+    
+    for i, w in enumerate(words):
+        if sentence_start is None:
+            sentence_start = w['start']
+        current_words.append(w)
+        
+        is_end = False
+        if any(w['word'].endswith(p) for p in punctuation_marks):
+            is_end = True
+        elif i < len(words) - 1 and (words[i+1]['start'] - w['end']) > 0.8:
+            is_end = True
+        elif i == len(words) - 1:
+            is_end = True
+        
+        if is_end:
+            sentences.append({
+                "words": list(current_words),
+                "start": sentence_start,
+                "end": w['end']
+            })
+            current_words = []
+            sentence_start = None
+    
+    # Now group sentences into chunks of ~chunk_duration seconds
+    chunks = []
+    current_chunk_words = []
+    chunk_start_time = sentences[0]['start'] if sentences else 0.0
+    chunk_accumulated_dur = 0.0
+    
+    for sent in sentences:
+        sent_dur = sent['end'] - sent['start']
+        current_chunk_words.extend(sent['words'])
+        chunk_accumulated_dur += sent_dur
+        
+        # Cut a new chunk if we've exceeded the target duration
+        if chunk_accumulated_dur >= chunk_duration:
+            chunks.append({
+                "words": list(current_chunk_words),
+                "start_time": chunk_start_time,
+                "end_time": sent['end'],
+                "chunk_index": len(chunks)
+            })
+            current_chunk_words = []
+            chunk_start_time = sent['end']
+            chunk_accumulated_dur = 0.0
+    
+    # Don't forget the last chunk
+    if current_chunk_words:
+        chunks.append({
+            "words": list(current_chunk_words),
+            "start_time": chunk_start_time,
+            "end_time": current_chunk_words[-1]['end'],
+            "chunk_index": len(chunks)
+        })
+    
+    return chunks
+
+
 def run_director_pass(story_text, transcript_data, char_data, output_path, is_short=False):
     print("  \U0001F3AC Running Director Pass...")
-    client = get_gemini_client()
+    client = get_gemini_client() if AI_PROVIDER == "gemini" else None
     
     # Build reference blocks
     char_refs = "\\n".join(
@@ -224,17 +312,6 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, is_sh
     pacing_rule = "FLEXIBLE 3-4 SECOND TARGET"
     if is_short:
         pacing_rule = "FAST-PACED VERTICAL (9:16) 1-2 SECOND TARGET. Frame for vertical orientation."
-        
-    sys_inst = f"""You are an Elite Executive Video Director. Segment the timestamped script into sequential visual scenes.
-LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
-
-RULES:
-1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
-2. CAMERA: Use one of: ["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "push_in_pan_left", "push_in_pan_right", "push_out_tilt_up", "push_out_tilt_down", "slow_drift", "orbit"]. Every scene MUST have motion!
-3. PROMPT: Write cinematic prose using: \"a bold, highly detailed anime illustration with sharp, precise linework, dramatic high-contrast cel shading, richly rendered textures, and moody, atmospheric cinematic lighting\". Use exact trait_tags for locked characters/locations.
-4. CHARACTERS: Maximum 3 characters present in any single scene.
-5. TRANSITION: ["cut", "dissolve", "flashback_fade", "fade_to_black"]. cut=0.0.
-"""
     
     schema = types.Schema(
         type=types.Type.OBJECT,
@@ -270,18 +347,79 @@ RULES:
         required=["scenes"]
     )
     
-    transcript_words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
-    fmt_input = "\\n".join(f"[{w['start']}s - {w['end']}s]: {w['word']}" for w in transcript_words)
-    user_content = f"Story:\\n{story_text}\\n\\nTranscript:\\n{fmt_input}"
+    # Split transcript into manageable chunks
+    chunks = _split_transcript_into_chunks(transcript_data)
+    total_chunks = len(chunks)
     
-    if AI_PROVIDER == "gemini":
-        result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
-    else:
-        result = _call_together_with_retry(sys_inst, user_content, schema)
+    if total_chunks > 1:
+        print(f"    📦 Transcript split into {total_chunks} chunks (~{CHUNK_DURATION_SECONDS}s each)")
+    
+    all_scenes = []
+    scene_counter = 1
+    prev_scenes_context = []  # Last 2 scenes from previous chunk for continuity
+    
+    for chunk in chunks:
+        chunk_idx = chunk['chunk_index']
+        chunk_words = chunk['words']
         
+        if total_chunks > 1:
+            print(f"    → Chunk {chunk_idx+1}/{total_chunks} "
+                  f"[{chunk['start_time']:.1f}s - {chunk['end_time']:.1f}s]...")
+        
+        # Build context carryover from previous chunk
+        context_block = ""
+        if prev_scenes_context:
+            prev_summary = "\n".join(
+                f"  Scene {s.get('scene_id')}: [{s.get('start_time')}s-{s.get('end_time')}s] "
+                f"type={s.get('scene_type')} camera={s.get('camera_movement')} "
+                f"prompt=\"{s.get('visual_prompt', '')[:100]}...\""
+                for s in prev_scenes_context
+            )
+            context_block = f"\n\nPREVIOUS SCENES (maintain visual continuity, do NOT repeat these):\n{prev_summary}\n"
+        
+        sys_inst = f"""You are an Elite Executive Video Director. Segment the timestamped script into sequential visual scenes.
+LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
+
+RULES:
+1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
+2. CAMERA: Use one of: ["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "push_in_pan_left", "push_in_pan_right", "push_out_tilt_up", "push_out_tilt_down", "slow_drift", "orbit"]. Every scene MUST have motion!
+3. PROMPT: Write cinematic prose using: \"a bold, highly detailed anime illustration with sharp, precise linework, dramatic high-contrast cel shading, richly rendered textures, and moody, atmospheric cinematic lighting\". Use exact trait_tags for locked characters/locations.
+4. CHARACTERS: Maximum 3 characters present in any single scene.
+5. TRANSITION: ["cut", "dissolve", "flashback_fade", "fade_to_black"]. cut=0.0.
+6. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
+{context_block}"""
+        
+        # Format only this chunk's transcript
+        fmt_input = "\\n".join(f"[{w['start']}s - {w['end']}s]: {w['word']}" for w in chunk_words)
+        user_content = f"Story (full narrative for context):\\n{story_text}\\n\\nTranscript (generate scenes ONLY for this section):\\n{fmt_input}"
+        
+        if AI_PROVIDER == "gemini":
+            result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
+        else:
+            result = _call_together_with_retry(sys_inst, user_content, schema)
+        
+        chunk_scenes = result.get("scenes", [])
+        
+        # Renumber scene_ids to be globally sequential
+        for s in chunk_scenes:
+            s["scene_id"] = scene_counter
+            scene_counter += 1
+        
+        all_scenes.extend(chunk_scenes)
+        
+        # Save last 2 scenes for context carryover to next chunk
+        prev_scenes_context = chunk_scenes[-2:] if len(chunk_scenes) >= 2 else chunk_scenes[:]
+        
+        if total_chunks > 1:
+            print(f"      ✅ Got {len(chunk_scenes)} scenes (total so far: {len(all_scenes)})")
+    
+    # Save the complete stitched blueprint
+    final_result = {"scenes": all_scenes}
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=4)
-    return result
+        json.dump(final_result, f, indent=4)
+    
+    print(f"  ✅ Director Pass complete! {len(all_scenes)} scenes across {total_chunks} chunk(s).")
+    return final_result
 
 def _normalize_word(w):
     import re
