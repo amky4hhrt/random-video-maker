@@ -394,10 +394,11 @@ RULES:
         fmt_input = "\\n".join(f"[{w['start']}s - {w['end']}s]: {w['word']}" for w in chunk_words)
         user_content = f"Story (full narrative for context):\\n{story_text}\\n\\nTranscript (generate scenes ONLY for this section):\\n{fmt_input}"
         
-        if AI_PROVIDER == "gemini":
-            result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
-        else:
-            result = _call_together_with_retry(sys_inst, user_content, schema)
+        # Director Pass ALWAYS uses Gemini — DeepSeek overflows on complex schemas
+        # with long visual_prompt strings and nested character/location arrays.
+        if client is None:
+            client = get_gemini_client()
+        result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
         
         chunk_scenes = result.get("scenes", [])
         
@@ -493,10 +494,8 @@ For SFX cues, provide an 'sfx_description' that precisely describes the acoustic
         }, required=["music_tracks", "sfx_cues", "duck_cues"]
     )
     
-    if AI_PROVIDER == "gemini":
-        result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
-    else:
-        result = _call_together_with_retry(sys_inst, story_text, schema)
+    # Music Pass ALWAYS uses Gemini for reliable structured output.
+    result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
     
     # Resolve timestamps
     words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
