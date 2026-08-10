@@ -141,7 +141,7 @@ For each location, write a single reusable 'trait_tags' description. Handle vari
 Output a shared negative_prompt for the whole film. KEEP THE negative_prompt UNDER 50 WORDS. Be concise — list only the most important things to avoid.
 Write 'reference_prompt' for each stage/variant using: \"a bold, highly detailed anime illustration with sharp, precise linework, dramatic high-contrast cel shading, richly rendered textures, and moody, atmospheric cinematic lighting\"
 NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output. This applies to reference_prompt and trait_tags as well.
-CONTENT POLICY (CRITICAL): Your descriptions MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. Sanitize all medical or dark themes (e.g. use "dramatic lighting" instead of "bloody wounds").
+CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your descriptions MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
 """
     
     schema = types.Schema(
@@ -389,7 +389,7 @@ RULES:
 5. TRANSITION: ["cut", "dissolve", "flashback_fade", "fade_to_black"]. cut=0.0.
 6. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
 7. NAMES (CRITICAL): In visual_prompt, ONLY use first names for characters. NEVER use full names or surnames (e.g. write "Meera" not "Meera Sharma"). This is required by the image generator's content policy.
-8. CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your visual_prompts MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story is medical or dark, SANITIZE the visual prompt. Describe "glowing medical equipment", "dramatic lighting", or "intense expressions" instead of "blood-soaked", "wounds", or "guns".
+8. CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your visual_prompts MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, abstract metaphors, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
 {context_block}"""
         
         # Format only this chunk's transcript
