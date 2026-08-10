@@ -138,7 +138,7 @@ def run_character_pass(story_text, output_path):
 Identify every RECURRING character AND RECURRING location.
 For each character, write a single reusable 'trait_tags' description. Handle age_stages if applicable.
 For each location, write a single reusable 'trait_tags' description. Handle variants if applicable.
-Output a shared negative_prompt for the whole film.
+Output a shared negative_prompt for the whole film. KEEP THE negative_prompt UNDER 50 WORDS. Be concise — list only the most important things to avoid.
 Write 'reference_prompt' for each stage/variant using: \"a bold, highly detailed anime illustration with sharp, precise linework, dramatic high-contrast cel shading, richly rendered textures, and moody, atmospheric cinematic lighting\"
 NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output. This applies to reference_prompt and trait_tags as well.
 """

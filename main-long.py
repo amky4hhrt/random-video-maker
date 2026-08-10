@@ -49,10 +49,15 @@ def main():
                 print("\u274C English transcription failed. Ensure story.txt and voiceover.* exist.")
                 sys.exit(1)
         # 2. English Blueprints
-        print("\n🧠 Generating English Blueprints...")
-        if not generate_blueprints(str(ENG_ASSETS), is_short=False):
-            print("❌ Blueprint generation failed.")
-            sys.exit(1)
+        char_bp = os.path.join(str(ENG_ASSETS), "character_prompts.json")
+        vid_bp = os.path.join(str(ENG_ASSETS), "video_blueprint.json")
+        if os.path.exists(char_bp) and os.path.exists(vid_bp):
+            print("\n🧠 Blueprints already exist. Skipping generation.")
+        else:
+            print("\n🧠 Generating English Blueprints...")
+            if not generate_blueprints(str(ENG_ASSETS), is_short=False):
+                print("❌ Blueprint generation failed.")
+                sys.exit(1)
             
         print("\n✅ Phase 1 Complete!")
         print("NEXT STEPS:")
