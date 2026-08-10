@@ -200,10 +200,9 @@ NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's 
         required=["negative_prompt", "characters", "locations"]
     )
     
-    if AI_PROVIDER == "gemini":
-        result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
-    else:
-        result = _call_together_with_retry(sys_inst, story_text, schema)
+    # Character Pass ALWAYS uses Gemini — DeepSeek enters infinite repetition loops
+    # on complex nested schemas (especially the negative_prompt free-text field).
+    result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
         
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=4)
