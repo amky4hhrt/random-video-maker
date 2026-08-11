@@ -284,7 +284,7 @@ def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
         # Fast path: pure concat
         list_file = os.path.join(temp_dir, "list.txt")
         with open(list_file, "w") as f:
-            for p in clip_paths: f.write(f"file '{os.path.abspath(p)}'\\n")
+            for p in clip_paths: f.write(f"file '{os.path.abspath(p)}'\n")
         return run_ffmpeg(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c:v", "copy", output_path], "Concat clips")
 
     # Step 2: Group clips into segments
@@ -306,7 +306,7 @@ def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
             seg_path = os.path.join(temp_dir, f"segment_{k}.mp4")
             list_file = os.path.join(temp_dir, f"list_{k}.txt")
             with open(list_file, "w") as f:
-                for p in seg_clips: f.write(f"file '{os.path.abspath(p)}'\\n")
+                for p in seg_clips: f.write(f"file '{os.path.abspath(p)}'\n")
             run_ffmpeg(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c:v", "copy", seg_path], f"Concat segment {k}")
             seg_files.append(seg_path)
 
@@ -337,11 +337,11 @@ def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
 
 # ─── Main Render Function ─────────────────────────────────────────
 def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, language="en", image_dir=None):
-    print(f"\\n\\U0001F4F9 Starting Long-Form Render for {language.upper()}")
+    print(f"\n\U0001F4F9 Starting Long-Form Render for {language.upper()}")
     
     vo_path = find_asset(audio_dir, "voiceover", AUDIO_EXTENSIONS)
     if not vo_path:
-        print("  \\u274C Missing voiceover!")
+        print("  \u274C Missing voiceover!")
         return False
         
     with open(os.path.join(audio_dir, "transcript.json")) as f: transcript = json.load(f)
@@ -377,7 +377,7 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
         
         img = find_asset(image_dir or visual_dir, str(sid), IMAGE_EXTENSIONS)
         if not img:
-            print(f"  \\u26A0\\uFE0F Missing image for scene {sid}, skipping.")
+            print(f"  \u26A0\uFE0F Missing image for scene {sid}, skipping.")
             continue
             
         base_dur = scene.get("end_time", 0.0) - scene.get("start_time", 0.0)
@@ -414,15 +414,15 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
             })
             
     if not clip_paths:
-        print("  \\u274C No clips rendered.")
+        print("  \u274C No clips rendered.")
         return False
     
     # 3. Stitch with crossfade transitions
-    print("  \\U0001F3AC Stitching clips...")
+    print("  \U0001F3AC Stitching clips...")
     stitched = os.path.join(temp_dir, "stitched.mp4")
     
     if not stitch_with_crossfades(clip_paths, clip_info, stitched, temp_dir):
-        print("  \\u274C Stitching failed!")
+        print("  \u274C Stitching failed!")
         return False
     
     # 4. Final mux with audio
@@ -430,5 +430,5 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
     run_ffmpeg(["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-shortest", final_out], "Final Mux")
     
     shutil.rmtree(temp_dir, ignore_errors=True)
-    print(f"  \\u2705 Render complete! Saved to {final_out}")
+    print(f"  \u2705 Render complete! Saved to {final_out}")
     return True
