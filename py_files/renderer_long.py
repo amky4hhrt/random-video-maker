@@ -100,9 +100,26 @@ def build_ken_burns_filter(camera_movement: str, frames: int, width: int, height
 
 def run_ffmpeg(cmd: list, label: str) -> bool:
     print(f"  \U000025B6 Running: {label}...")
-    result = subprocess.run(cmd)
+
+    # Silence ffmpeg's banner/build-config spam and verbose per-frame logging.
+    # Only inject these for actual ffmpeg calls (not ffprobe or other tools),
+    # and only if the caller hasn't already set its own -loglevel.
+    if cmd and os.path.basename(cmd[0]) == "ffmpeg":
+        quiet_flags = []
+        if "-hide_banner" not in cmd:
+            quiet_flags.append("-hide_banner")
+        if "-loglevel" not in cmd:
+            quiet_flags.extend(["-loglevel", "error"])
+        if quiet_flags:
+            cmd = [cmd[0]] + quiet_flags + cmd[1:]
+
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if result.returncode != 0:
         print(f"  \u274C {label} failed with exit code {result.returncode}")
+        if result.stdout:
+            print("  ── ffmpeg output ──")
+            print(result.stdout.strip())
+            print("  ───────────────────")
         return False
     return True
 
