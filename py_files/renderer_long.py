@@ -99,9 +99,10 @@ def build_ken_burns_filter(camera_movement: str, frames: int, width: int, height
     return f"{zp},format=yuv420p,setsar=1/1,fps=30"
 
 def run_ffmpeg(cmd: list, label: str) -> bool:
-    result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    print(f"  \U000025B6 Running: {label}...")
+    result = subprocess.run(cmd)
     if result.returncode != 0:
-        print(f"  \u274C {label} failed: {result.stderr.decode(errors='ignore')[-300:]}")
+        print(f"  \u274C {label} failed with exit code {result.returncode}")
         return False
     return True
 
