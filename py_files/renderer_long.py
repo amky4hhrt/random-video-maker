@@ -324,16 +324,10 @@ def _xfade_stitch(clip_paths, output_path, xfade_duration, clip_durations):
     for p in clip_paths:
         cmd.extend(["-i", p])
     
-    # Build xfade filter chain
-    # [0:v][1:v]xfade=transition=fade:duration=1:offset=X[v01];
-    # [v01][2:v]xfade=transition=fade:duration=1:offset=Y[v012]; ...
-    filter_parts = []
-    
-    # We need to know the duration of each clip to calculate offsets
+    # Get durations
     if clip_durations and len(clip_durations) == n:
-        durations = clip_durations
+        durations = list(clip_durations)
     else:
-        # Probe durations
         durations = []
         for p in clip_paths:
             try:
@@ -344,28 +338,28 @@ def _xfade_stitch(clip_paths, output_path, xfade_duration, clip_durations):
                 )
                 durations.append(float(probe.stdout.strip()))
             except:
-                durations.append(5.0)  # fallback
+                durations.append(5.0)
     
-    # We need to cap the transition duration for EACH transition 
-    # to be at most half of the shortest clip involved.
-    cumulative_offset = 0.0
-    current_xd = 0.0
+    # Build xfade filter chain with correct offset calculation.
+    # offset for xfade i = (sum of durations[0..i]) - (sum of xd[0..i-1]) - xd[i]
+    filter_parts = []
+    accumulated_dur = 0.0
+    accumulated_xd = 0.0
     
     for i in range(n - 1):
         in_a = f"[{i}:v]" if i == 0 else f"[v{i}]"
         in_b = f"[{i+1}:v]"
         out_label = f"[v{i+1}]" if i < n - 2 else "[vout]"
         
-        # Calculate dynamic xfade duration for this specific cut
-        # It cannot be longer than xfade_duration, 0.5s, or half the duration of either clip involved.
-        dur_a_remaining = durations[i] - (current_xd if i > 0 else 0)
-        current_xd = min(xfade_duration, 0.5, dur_a_remaining / 2.1, durations[i+1] / 2.1)
-        current_xd = max(0.05, current_xd) # Ensure it doesn't go below 50ms
+        # Cap xfade: must not exceed half of either adjacent clip
+        xd = min(xfade_duration, durations[i] / 2.1, durations[i+1] / 2.1)
+        xd = max(0.05, xd)
         
-        cumulative_offset += durations[i] - (current_xd if i > 0 else 0)
-        offset = max(0, cumulative_offset - current_xd)
+        accumulated_dur += durations[i]
+        offset = max(0, accumulated_dur - accumulated_xd - xd)
+        accumulated_xd += xd
         
-        filter_parts.append(f"{in_a}{in_b}xfade=transition=fade:duration={current_xd:.3f}:offset={offset:.3f}{out_label}")
+        filter_parts.append(f"{in_a}{in_b}xfade=transition=fade:duration={xd:.3f}:offset={offset:.3f}{out_label}")
     
     filter_str = ";".join(filter_parts)
     cmd.extend(["-filter_complex", filter_str, "-map", "[vout]"] + _video_encode_args("fast") + [output_path])
