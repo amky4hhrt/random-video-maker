@@ -7,8 +7,23 @@ from py_files.renderer_long import (
     run_ffmpeg, _video_encode_args, build_ken_burns_filter, get_easing_profile,
     stitch_with_crossfades, CPU_THREADS, _smooth_camera_rhythm
 )
+from py_files.captions import generate_subtitle_file
 
-def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, language="en", image_dir=None):
+# Per-language font used for burned-in captions. Hindi needs a Devanagari-capable
+# font (Montserrat has no Devanagari glyphs); English uses the brand font.
+CAPTION_FONTS = {
+    "en": "Montserrat Black",
+    "hi": "Noto Sans Devanagari",
+}
+
+def _escape_ass_path_for_filter(path: str) -> str:
+    # Paths inside an ffmpeg filtergraph need ':' and '\' escaped, and the
+    # whole thing wrapped in single quotes so commas/spaces don't break
+    # the filtergraph parser.
+    escaped = path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "'\\''")
+    return f"'{escaped}'"
+
+def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, language="en", image_dir=None, burn_captions=True):
     print(f"\n\U0001F4F1 Starting Short-Form Render (9:16) for {language.upper()}")
     
     vo_path = find_asset(audio_dir, "voiceover", AUDIO_EXTENSIONS)
@@ -25,6 +40,16 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     temp_dir = f"/tmp/temp_render_short_{language}"
     os.makedirs(temp_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
+
+    ass_path = None
+    if burn_captions:
+        try:
+            font_name = CAPTION_FONTS.get(language, "Montserrat Black")
+            ass_path = os.path.join(temp_dir, f"captions_{language}.ass")
+            generate_subtitle_file(transcript, vid_bp, ass_path, is_short=True, font_name=font_name, use_karaoke=False)
+        except Exception as e:
+            print(f"  \u26A0\uFE0F Caption generation failed, continuing without captions: {e}")
+            ass_path = None
     
     # 1. Audio Mix
     cmd_dur = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", vo_path]
@@ -98,9 +123,20 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
         print("  \u274C Stitching failed!")
         return False
     
-    # 4. Final mux with audio
+    # 4. Final mux with audio (+ burn in captions, if generated)
     final_out = os.path.join(output_dir, f"final_{language}_short.mp4")
-    run_ffmpeg(["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-shortest", final_out], "Final Mux")
+    if ass_path and os.path.exists(ass_path):
+        subs_filter = f"subtitles={_escape_ass_path_for_filter(ass_path)}"
+        cmd_final = (
+            ["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-vf", subs_filter]
+            + _video_encode_args("fast")
+            + ["-c:a", "aac", "-shortest", final_out]
+        )
+        label = "Final Mux + Caption Burn-in"
+    else:
+        cmd_final = ["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-shortest", final_out]
+        label = "Final Mux"
+    run_ffmpeg(cmd_final, label)
     
     shutil.rmtree(temp_dir, ignore_errors=True)
     print(f"  \u2705 Short Render complete! Saved to {final_out}")
