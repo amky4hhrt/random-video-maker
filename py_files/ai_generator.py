@@ -736,10 +736,18 @@ def generate_hindi_blueprints(eng_visual_dir, hin_audio_dir, is_short=False):
     with open(eng_vid_bp_file, "r", encoding="utf-8") as f: eng_vid_bp = json.load(f)
     
     hin_vid_out = hin_proj / "video_blueprint.json"
+    hin_mus_out = hin_proj / "music_blueprint.json"
+    
+    base_dir = hin_proj.parent
+    mus_lib = base_dir / "music" / "music_library.json"
+    sfx_lib = base_dir / "sfx" / "sfx_library.json"
     
     try:
         run_hindi_director_pass(hin_story_text, hin_transcript_data, eng_vid_bp, hin_vid_out, is_short=is_short)
-        print("  \u2705 Hindi Blueprint successfully generated!")
+        print("  \u2705 Hindi Video Blueprint successfully generated!")
+        
+        run_music_pass(hin_story_text, hin_transcript_data, hin_mus_out, mus_lib, sfx_lib)
+        print("  \u2705 Hindi Music Blueprint successfully generated!")
         return True
     except Exception as e:
         print(f"  \u274C Hindi Blueprint Generation failed: {e}")

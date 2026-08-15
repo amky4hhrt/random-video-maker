@@ -416,7 +416,10 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
             print(f"  \u26A0\uFE0F Missing image for scene {sid}, skipping.")
             continue
             
-        base_dur = scene.get("end_time", 0.0) - scene.get("start_time", 0.0)
+        start = 0.0 if i == 0 else scene.get("start_time", 0.0)
+        end = dur if i == len(scenes) - 1 else scenes[i+1].get("start_time", 0.0)
+        base_dur = end - start
+        
         if base_dur <= 0: continue
         
         is_final = (i == total_scenes - 1)
