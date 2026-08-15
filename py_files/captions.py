@@ -26,7 +26,7 @@ def _fix_devanagari_shaping(text):
     Manually swaps the logical order of Devanagari short 'i' matra (U+093F)
     with its preceding consonant so that libass draws it in the correct visual order.
     """
-    return re.sub(r'([\u0915-\u0939]\u093C?)\u093F', r'\u093F\1', text)
+    return re.sub(r'([\u0915-\u0939]\u093C?)ि', r'ि\1', text)
 
 def _word_start(w):
     return w.get("start", w.get("start_time", 0.0))
