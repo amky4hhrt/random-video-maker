@@ -2,6 +2,7 @@ import os
 import json
 import subprocess
 import shutil
+import time
 
 CPU_THREADS = 2
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff")
@@ -113,14 +114,32 @@ def run_ffmpeg(cmd: list, label: str) -> bool:
         if quiet_flags:
             cmd = [cmd[0]] + quiet_flags + cmd[1:]
 
+    start_t = time.time()
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    elapsed = time.time() - start_t
+
     if result.returncode != 0:
-        print(f"  \u274C {label} failed with exit code {result.returncode}")
+        print(f"  \u274C {label} FAILED (exit code {result.returncode}, after {elapsed:.1f}s)")
         if result.stdout:
             print("  ── ffmpeg output ──")
             print(result.stdout.strip())
             print("  ───────────────────")
         return False
+
+    # Confirm the step actually produced usable output, not just a clean exit code.
+    # ffmpeg can return 0 while writing a 0-byte or missing file in some failure modes.
+    out_path = cmd[-1] if cmd else None
+    if out_path and isinstance(out_path, str) and not out_path.startswith("-"):
+        if os.path.exists(out_path):
+            size = os.path.getsize(out_path)
+            if size == 0:
+                print(f"  \u274C {label} FAILED (exit 0 but output file is empty: {out_path})")
+                return False
+            print(f"  \u2705 Completed: {label} ({elapsed:.1f}s, {size/1_048_576:.1f} MB)")
+        else:
+            print(f"  \u2705 Completed: {label} ({elapsed:.1f}s)")
+    else:
+        print(f"  \u2705 Completed: {label} ({elapsed:.1f}s)")
     return True
 
 def find_asset(input_dir, base_name, extensions):
@@ -433,7 +452,18 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
     if not clip_paths:
         print("  \u274C No clips rendered.")
         return False
-    
+
+    # Sanity check: does the rendered scene coverage actually reach the audio's
+    # length? total_scene_dur is the mathematically exact final video duration
+    # (crossfade offsets are computed so overlaps net out to this sum), so any
+    # gap here means a scene was skipped (missing image / bad timestamp) or the
+    # blueprint doesn't cover the full voiceover.
+    total_scene_dur = sum(ci["base_duration"] for ci in clip_info)
+    skipped = total_scenes - len(clip_paths)
+    gap = dur - total_scene_dur
+    print(f"  \u2139\uFE0F Scene coverage: {total_scene_dur:.2f}s rendered vs {dur:.2f}s audio "
+          f"(gap: {gap:.2f}s, {skipped} scene(s) skipped)")
+
     # 3. Stitch with crossfade transitions
     print("  \U0001F3AC Stitching clips...")
     stitched = os.path.join(temp_dir, "stitched.mp4")
@@ -441,11 +471,34 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
     if not stitch_with_crossfades(clip_paths, clip_info, stitched, temp_dir):
         print("  \u274C Stitching failed!")
         return False
-    
+
+    if not os.path.exists(stitched) or os.path.getsize(stitched) == 0:
+        print(f"  \u274C Stitching reported success but {stitched} is missing/empty!")
+        return False
+
+    # If the video came in short of the audio (skipped scene / blueprint gap),
+    # freeze the last frame to cover the difference instead of silently letting
+    # -shortest below truncate the voiceover (and captions) early.
+    if gap > 0.05:
+        print(f"  \u26A0\uFE0F Video is {gap:.2f}s shorter than audio \u2014 extending final frame to compensate.")
+        padded = os.path.join(temp_dir, "stitched_padded.mp4")
+        if run_ffmpeg(
+            ["ffmpeg", "-y", "-i", stitched, "-vf", f"tpad=stop_mode=clone:stop_duration={gap}"]
+            + _video_encode_args("fast") + [padded],
+            "Pad video to match audio length"
+        ):
+            stitched = padded
+        else:
+            print("  \u26A0\uFE0F Padding failed, continuing with the shorter (un-padded) video.")
+
     # 4. Final mux with audio
     final_out = os.path.join(output_dir, f"final_{language}_long.mp4")
-    run_ffmpeg(["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-shortest", final_out], "Final Mux")
-    
+    mux_ok = run_ffmpeg(["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-shortest", final_out], "Final Mux")
+
+    if not mux_ok or not os.path.exists(final_out) or os.path.getsize(final_out) == 0:
+        print(f"  \u274C Final render FAILED \u2014 {final_out} was not produced.")
+        return False
+
     shutil.rmtree(temp_dir, ignore_errors=True)
     print(f"  \u2705 Render complete! Saved to {final_out}")
     return True

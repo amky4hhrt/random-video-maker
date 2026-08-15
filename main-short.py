@@ -67,8 +67,16 @@ def main():
         
         # Render English
         en_final = ENG_OUT / "final_en_short.mp4"
+        en_ok = True
         if not en_final.exists():
-            render_short_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
+            en_ok = render_short_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
+            if not en_ok:
+                print("  \u274C English render FAILED \u2014 see errors above.")
+            elif not en_final.exists():
+                print(f"  \u274C English render reported success but {en_final} is missing!")
+                en_ok = False
+            else:
+                print(f"  \u2705 English render confirmed on disk: {en_final}")
         else:
             print(f"  \u2705 English video already rendered ({en_final.name}). Skipping.")
         
@@ -80,6 +88,7 @@ def main():
             print("\n\U0001F1EE\U0001F1F3 Hindi assets detected! Preparing Hindi render...")
             
             hin_final = HIN_OUT / "final_hi_short.mp4"
+            hin_ok = True
             if hin_final.exists():
                 print(f"  \u2705 Hindi video already rendered ({hin_final.name}). Skipping.")
             else:
@@ -89,6 +98,7 @@ def main():
                     hin_audio = get_audio_file(str(HIN_ASSETS))
                     if not hin_audio or not generate_transcript(hin_audio, str(hin_story), str(hin_transcript), language="hi"):
                         print("\u274C Hindi transcription failed.")
+                        hin_ok = False
                 
                 hin_vid_bp = HIN_ASSETS / "video_blueprint.json"
                 if hin_transcript.exists() and not hin_vid_bp.exists():
@@ -96,11 +106,26 @@ def main():
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=True)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
-                    render_short_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    hin_ok = render_short_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    if not hin_ok:
+                        print("  \u274C Hindi render FAILED \u2014 see errors above.")
+                    elif not hin_final.exists():
+                        print(f"  \u274C Hindi render reported success but {hin_final} is missing!")
+                        hin_ok = False
+                    else:
+                        print(f"  \u2705 Hindi render confirmed on disk: {hin_final}")
+                elif not (hin_transcript.exists() and hin_vid_bp.exists()):
+                    print("  \u274C Hindi render skipped \u2014 transcript or video_blueprint.json was never produced.")
+                    hin_ok = False
         else:
+            hin_ok = True
             print("\nℹ️ No Hindi story.txt or voiceover found in hindi_short_assets. Skipping Hindi render.")
-            
-        print("\n✅ All Renders Complete!")
+
+        if en_ok and hin_ok:
+            print("\n✅ All Renders Complete!")
+        else:
+            print("\n\u274C One or more renders FAILED \u2014 scroll up for the specific error.")
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()

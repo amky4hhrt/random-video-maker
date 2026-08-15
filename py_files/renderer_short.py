@@ -114,7 +114,18 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     if not clip_paths:
         print("  \u274C No clips rendered.")
         return False
-    
+
+    # Sanity check: does the rendered scene coverage actually reach the audio's
+    # length? total_scene_dur is the mathematically exact final video duration
+    # (crossfade offsets are computed so overlaps net out to this sum), so any
+    # gap here means a scene was skipped (missing image / bad timestamp) or the
+    # blueprint doesn't cover the full voiceover.
+    total_scene_dur = sum(ci["base_duration"] for ci in clip_info)
+    skipped = total_scenes - len(clip_paths)
+    gap = dur - total_scene_dur
+    print(f"  \u2139\uFE0F Scene coverage: {total_scene_dur:.2f}s rendered vs {dur:.2f}s audio "
+          f"(gap: {gap:.2f}s, {skipped} scene(s) skipped)")
+
     # 3. Stitch with crossfade transitions
     print("  \U0001F3AC Stitching with crossfade transitions...")
     stitched = os.path.join(temp_dir, "stitched.mp4")
@@ -122,7 +133,26 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     if not stitch_with_crossfades(clip_paths, clip_info, stitched, temp_dir):
         print("  \u274C Stitching failed!")
         return False
-    
+
+    if not os.path.exists(stitched) or os.path.getsize(stitched) == 0:
+        print(f"  \u274C Stitching reported success but {stitched} is missing/empty!")
+        return False
+
+    # If the video came in short of the audio (skipped scene / blueprint gap),
+    # freeze the last frame to cover the difference instead of silently letting
+    # -shortest below truncate the voiceover (and captions) early.
+    if gap > 0.05:
+        print(f"  \u26A0\uFE0F Video is {gap:.2f}s shorter than audio \u2014 extending final frame to compensate.")
+        padded = os.path.join(temp_dir, "stitched_padded.mp4")
+        if run_ffmpeg(
+            ["ffmpeg", "-y", "-i", stitched, "-vf", f"tpad=stop_mode=clone:stop_duration={gap}"]
+            + _video_encode_args("fast") + [padded],
+            "Pad video to match audio length"
+        ):
+            stitched = padded
+        else:
+            print("  \u26A0\uFE0F Padding failed, continuing with the shorter (un-padded) video.")
+
     # 4. Final mux with audio (+ burn in captions, if generated)
     final_out = os.path.join(output_dir, f"final_{language}_short.mp4")
     if ass_path and os.path.exists(ass_path):
@@ -136,8 +166,12 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     else:
         cmd_final = ["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-shortest", final_out]
         label = "Final Mux"
-    run_ffmpeg(cmd_final, label)
-    
+    mux_ok = run_ffmpeg(cmd_final, label)
+
+    if not mux_ok or not os.path.exists(final_out) or os.path.getsize(final_out) == 0:
+        print(f"  \u274C Short Render FAILED \u2014 {final_out} was not produced.")
+        return False
+
     shutil.rmtree(temp_dir, ignore_errors=True)
     print(f"  \u2705 Short Render complete! Saved to {final_out}")
     return True
