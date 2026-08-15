@@ -114,32 +114,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\
         s = seconds % 60
         return f"{h:01d}:{m:02d}:{s:05.2f}"
 
-    blueprint_scenes = blueprint_data.get("video_blueprint", []) or blueprint_data.get("scenes", [])
-    
-    scenes_groups = []
-    for i, scene in enumerate(blueprint_scenes):
-        scene_start = scene.get("start_time", 0.0)
-        if i < len(blueprint_scenes) - 1:
-            boundary_end = blueprint_scenes[i + 1].get("start_time", 0.0)
-        else:
-            boundary_end = float('inf')
+    # NOTE: captions are chunked from the FULL, continuous word list — not
+    # bucketed per video scene. Scene cuts are a visual concern; sentences and
+    # phrases don't stop for them. Pre-splitting words by scene boundary (the
+    # old approach) meant a caption group could never span a scene cut, so a
+    # phrase that happened to straddle one got torn in half — the second
+    # caption card would start on whatever word landed just after the cut,
+    # even if that word was a mid-sentence fragment (e.g. a lone Hindi
+    # postposition like "के"/"में"/"से" with its noun stranded on the
+    # previous card). Chunking continuously avoids that entirely.
+    transcript_words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
+    all_words = [w for w in transcript_words if isinstance(w, dict) and "word" in w]
+    all_words.sort(key=_word_start)
 
-        transcript_words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
-        scene_words = []
-        for word_entry in transcript_words:
-            if isinstance(word_entry, dict) and "word" in word_entry:
-                w_start = _word_start(word_entry)
-                if scene_start <= w_start < boundary_end:
-                    scene_words.append(word_entry)
-
-        if not scene_words:
-            continue
-        groups = _chunk_words_for_captions(scene_words, max_chars, is_short)
-        scenes_groups.append(groups)
-
-    flat_groups = []
-    for groups in scenes_groups:
-        flat_groups.extend(groups)
+    flat_groups = _chunk_words_for_captions(all_words, max_chars, is_short) if all_words else []
 
     for gi, group in enumerate(flat_groups):
         group_start = _word_start(group[0])
