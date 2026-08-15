@@ -49,7 +49,7 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
             # survives the temp_dir cleanup at the end of render and is easy
             # to find per project/language.
             ass_path = os.path.join(visual_dir, f"captions_{language}.ass")
-            generate_subtitle_file(transcript, vid_bp, ass_path, is_short=True, font_name=font_name, use_karaoke=False)
+            generate_subtitle_file(transcript, vid_bp, ass_path, is_short=True, font_name=font_name, use_karaoke=True)
         except Exception as e:
             print(f"  \u26A0\uFE0F Caption generation failed, continuing without captions: {e}")
             ass_path = None
@@ -159,7 +159,16 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     # 4. Final mux with audio (+ burn in captions, if generated)
     final_out = os.path.join(output_dir, f"final_{language}_short.mp4")
     if ass_path and os.path.exists(ass_path):
-        subs_filter = f"subtitles={_escape_ass_path_for_filter(ass_path)}"
+        # fontsdir points libass straight at the bundled .ttf files (see the
+        # font-copy + fc-cache step earlier in the pipeline) instead of
+        # relying on the global fontconfig cache already being warm in this
+        # process/session. Keeps caption burn-in correct even if this render
+        # step ever runs before that cache-rebuild cell, or in a fresh
+        # subprocess that hasn't seen it.
+        subs_filter = (
+            f"subtitles={_escape_ass_path_for_filter(ass_path)}"
+            f":fontsdir={_escape_ass_path_for_filter('/root/.fonts')}"
+        )
         cmd_final = (
             ["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-vf", subs_filter]
             + _video_encode_args("fast")
