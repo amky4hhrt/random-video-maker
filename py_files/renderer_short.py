@@ -45,7 +45,10 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     if burn_captions:
         try:
             font_name = CAPTION_FONTS.get(language, "Montserrat Black")
-            ass_path = os.path.join(temp_dir, f"captions_{language}.ass")
+            # Save alongside the rest of this video's assets (not /tmp), so it
+            # survives the temp_dir cleanup at the end of render and is easy
+            # to find per project/language.
+            ass_path = os.path.join(visual_dir, f"captions_{language}.ass")
             generate_subtitle_file(transcript, vid_bp, ass_path, is_short=True, font_name=font_name, use_karaoke=False)
         except Exception as e:
             print(f"  \u26A0\uFE0F Caption generation failed, continuing without captions: {e}")
