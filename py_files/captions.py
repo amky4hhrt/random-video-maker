@@ -1,5 +1,6 @@
 import os
 import json
+import re
 
 MIN_WORDS_PER_GROUP_SHORT = 2
 MAX_WORDS_PER_GROUP_SHORT = 2
@@ -19,6 +20,13 @@ SHADOW_DEPTH_FACTOR = 0.02
 HIGHLIGHT_POP_ENABLED = False
 HIGHLIGHT_POP_SCALE = 108
 HIGHLIGHT_POP_MS = 90
+
+def _fix_devanagari_shaping(text):
+    """
+    Manually swaps the logical order of Devanagari short 'i' matra (U+093F)
+    with its preceding consonant so that libass draws it in the correct visual order.
+    """
+    return re.sub(r'([\u0915-\u0939]\u093C?)\u093F', r'\u093F\1', text)
 
 def _word_start(w):
     return w.get("start", w.get("start_time", 0.0))
@@ -57,8 +65,9 @@ def _render_group_dialogue(group, group_start, highlight_windows, use_karaoke):
     runs = []
     n = len(group)
     for idx, w in enumerate(group):
+        raw_word = _fix_devanagari_shaping(w["word"].strip())
         if not use_karaoke:
-            runs.append(w["word"].strip())
+            runs.append(raw_word)
         else:
             hl_start, hl_end = highlight_windows[idx]
             rel_start_ms = _ms(hl_start - group_start)
@@ -77,7 +86,7 @@ def _render_group_dialogue(group, group_start, highlight_windows, use_karaoke):
                     f"\\t({rel_start_ms},{pop_peak_ms},\\fscx{HIGHLIGHT_POP_SCALE}\\fscy{HIGHLIGHT_POP_SCALE})"
                     f"\\t({pop_peak_ms},{pop_peak_ms + HIGHLIGHT_POP_MS},\\fscx100\\fscy100)"
                 )
-            run = "{" + open_tags + "}" + w["word"].strip()
+            run = "{" + open_tags + "}" + raw_word
             if not is_last:
                 run += "{" + f"\\t({rel_end_ms},{rel_end_ms + 1},\\c{c_base})" + "}"
             runs.append(run)
