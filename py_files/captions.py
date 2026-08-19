@@ -6,7 +6,7 @@ MIN_WORDS_PER_GROUP_SHORT = 2
 MAX_WORDS_PER_GROUP_SHORT = 2
 MIN_WORDS_PER_GROUP_LONG = 3
 MAX_WORDS_PER_GROUP_LONG = 4
-MAX_CHARS_PER_GROUP_SHORT = 18       # portrait (1080x1920)
+MAX_CHARS_PER_GROUP_SHORT = 14       # portrait (1080x1920)
 MAX_CHARS_PER_GROUP_LANDSCAPE = 40   # landscape (1920x1080)
 MIN_WORD_HIGHLIGHT_SECONDS = 0.35
 
@@ -21,12 +21,7 @@ HIGHLIGHT_POP_ENABLED = False
 HIGHLIGHT_POP_SCALE = 108
 HIGHLIGHT_POP_MS = 90
 
-def _fix_devanagari_shaping(text):
-    """
-    Manually swaps the logical order of Devanagari short 'i' matra (U+093F)
-    with its preceding consonant so that libass draws it in the correct visual order.
-    """
-    return re.sub(r'([\u0915-\u0939]\u093C?)ि', r'ि\1', text)
+
 
 def _word_start(w):
     return w.get("start", w.get("start_time", 0.0))
@@ -65,7 +60,7 @@ def _render_group_dialogue(group, group_start, highlight_windows, use_karaoke):
     runs = []
     n = len(group)
     for idx, w in enumerate(group):
-        raw_word = _fix_devanagari_shaping(w["word"].strip())
+        raw_word = w["word"].strip()
         if not use_karaoke:
             runs.append(raw_word)
         else:
@@ -78,7 +73,7 @@ def _render_group_dialogue(group, group_start, highlight_windows, use_karaoke):
             c_base = "&H00E6E6E6&"
             c_highlight = "&H007B99F0&"
 
-            open_tags = "\\c" + c_base
+            open_tags = "\\q2\\c" + c_base
             open_tags += f"\\t({rel_start_ms},{rel_start_ms + 1},\\c{c_highlight})"
             if HIGHLIGHT_POP_ENABLED:
                 pop_peak_ms = rel_start_ms + HIGHLIGHT_POP_MS
@@ -95,7 +90,7 @@ def _render_group_dialogue(group, group_start, highlight_windows, use_karaoke):
 def generate_subtitle_file(transcript_data, blueprint_data, output_path, is_short, font_name="Montserrat Black", use_karaoke=False):
     print("\n\U0001F7E2 Generating Captions...")
     res_x, res_y = (1080, 1920) if is_short else (1920, 1080)
-    font_size = 150 if is_short else 114
+    font_size = 135 if is_short else 114
     max_chars = MAX_CHARS_PER_GROUP_SHORT if is_short else MAX_CHARS_PER_GROUP_LANDSCAPE
     margin_l, margin_r = 80, 80
     margin_v = 160 if is_short else 90
@@ -161,7 +156,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\
 
         event_start = group_start
         if next_group_start is not None:
-            event_end = min(highlight_windows[-1][1] + 1.5, next_group_start - 0.05)
+            event_end = min(highlight_windows[-1][1] + 1.5, next_group_start - 0.01)
         else:
             event_end = highlight_windows[-1][1] + 1.5
 

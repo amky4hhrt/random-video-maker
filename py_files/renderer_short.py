@@ -169,7 +169,7 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
         # step ever runs before that cache-rebuild cell, or in a fresh
         # subprocess that hasn't seen it.
         subs_filter = (
-            f"subtitles={_escape_ass_path_for_filter(ass_path)}"
+            f"subtitles={_escape_ass_path_for_filter(ass_path)}:shaping=complex"
             f":fontsdir={_escape_ass_path_for_filter('/root/.fonts')}"
         )
         cmd_final = (

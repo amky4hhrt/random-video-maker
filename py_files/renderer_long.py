@@ -153,7 +153,7 @@ def find_asset(input_dir, base_name, extensions):
 
 # ─── Audio Ducking & Bed ──────────────────────────────────────────
 BGM_BASE_MULTIPLIER  = 1.0
-BGM_DUCK_MULTIPLIER  = 0.40
+BGM_DUCK_MULTIPLIER  = 0.30
 VOLUME_RAMP_SECONDS  = 1.2
 
 def build_volume_breakpoints(music_data: dict, active_end: float) -> list:
