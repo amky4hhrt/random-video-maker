@@ -1,7 +1,9 @@
 import os
 import json
 import re
-from PIL import Image, ImageDraw, ImageFontMIN_WORDS_PER_GROUP_SHORT = 2
+from PIL import Image, ImageDraw, ImageFont
+
+MIN_WORDS_PER_GROUP_SHORT = 2
 MAX_WORDS_PER_GROUP_SHORT = 2
 MIN_WORDS_PER_GROUP_LONG = 3
 MAX_WORDS_PER_GROUP_LONG = 4
