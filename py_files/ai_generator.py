@@ -139,7 +139,7 @@ Identify every RECURRING character AND RECURRING location.
 For each character, write a single reusable 'trait_tags' description. Handle age_stages if applicable.
 For each location, write a single reusable 'trait_tags' description. Handle variants if applicable.
 Output a shared negative_prompt for the whole film. KEEP THE negative_prompt UNDER 50 WORDS. Be concise — list only the most important things to avoid.
-Write 'reference_prompt' for each stage/variant using: \"a bold, highly detailed anime illustration with sharp, precise linework, dramatic high-contrast cel shading, richly rendered textures, and moody, atmospheric cinematic lighting\"
+Write 'reference_prompt' for each stage/variant using: "High-quality graphic novel illustration, detailed comic book art style, dramatic cinematic lighting, gritty realism, masterpiece, highly detailed"
 NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output. This applies to reference_prompt and trait_tags as well.
 CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your descriptions MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
 """
@@ -384,12 +384,13 @@ LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
 RULES:
 1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
 2. CAMERA: Use one of: ["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "push_in_pan_left", "push_in_pan_right", "push_out_tilt_up", "push_out_tilt_down", "slow_drift", "orbit"]. Every scene MUST have motion!
-3. PROMPT: Write cinematic prose using: \"a bold, highly detailed anime illustration with sharp, precise linework, dramatic high-contrast cel shading, richly rendered textures, and moody, atmospheric cinematic lighting\". Use exact trait_tags for locked characters/locations.
+3. PROMPT: Write cinematic prose using: "High-quality graphic novel illustration, detailed comic book art style, dramatic cinematic lighting, gritty realism, masterpiece, highly detailed". Use exact trait_tags for locked characters/locations.
 4. CHARACTERS: Maximum 3 characters present in any single scene.
 5. TRANSITION: ["cut", "dissolve", "flashback_fade", "fade_to_black"]. cut=0.0.
 6. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
 7. NAMES (CRITICAL): In visual_prompt, ONLY use first names for characters. NEVER use full names or surnames (e.g. write "Meera" not "Meera Sharma"). This is required by the image generator's content policy.
 8. CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your visual_prompts MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, abstract metaphors, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
+9. SINGLE ACTION RULE (CRITICAL): An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
 {context_block}"""
         
         # Format only this chunk's transcript

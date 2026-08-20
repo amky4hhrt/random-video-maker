@@ -194,7 +194,8 @@ def generate_subtitle_images(transcript_data, blueprint_data, output_dir, langua
     c_outline = hex_to_rgb(TEXT_OUTLINE_COLOUR)
     c_shadow = hex_to_rgb(TEXT_SHADOW_COLOUR)
 
-    font_path = f"/root/.fonts/{font_name.replace(' ', '')}-Regular.ttf"
+    # Assume font_name is the exact filename without the .ttf extension
+    font_path = f"/root/.fonts/{font_name}.ttf"
     if not os.path.exists(font_path):
         font_path = font_name
     try:

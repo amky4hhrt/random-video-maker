@@ -13,7 +13,7 @@ from py_files.captions import generate_subtitle_file, generate_subtitle_images
 # font (Montserrat has no Devanagari glyphs); English uses the brand font.
 CAPTION_FONTS = {
     "en": "Montserrat Black",
-    "hi": "Noto Sans Devanagari",
+    "hi": "NotoSansDevanagari-Black",
 }
 
 def _escape_ass_path_for_filter(path: str) -> str:
@@ -50,7 +50,7 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
             # to find per project/language.
             if language == "hi":
                 ass_path = os.path.join(visual_dir, f"captions_{language}.txt")
-                generate_subtitle_images(transcript, vid_bp, visual_dir, language, is_short=True, font_name="Noto Sans Devanagari", use_karaoke=True)
+                generate_subtitle_images(transcript, vid_bp, visual_dir, language, is_short=True, font_name="NotoSansDevanagari-Black", use_karaoke=True)
             else:
                 ass_path = os.path.join(visual_dir, f"captions_{language}.ass")
                 generate_subtitle_file(transcript, vid_bp, ass_path, is_short=True, font_name=font_name, use_karaoke=True)
