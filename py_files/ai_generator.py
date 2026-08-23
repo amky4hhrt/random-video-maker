@@ -384,7 +384,7 @@ LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
 RULES:
 1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
 2. CAMERA: Use one of: ["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "push_in_pan_left", "push_in_pan_right", "push_out_tilt_up", "push_out_tilt_down", "slow_drift", "orbit"]. Every scene MUST have motion!
-3. PROMPT: Write cinematic prose using: "High-quality graphic novel illustration, detailed comic book art style, dramatic cinematic lighting, gritty realism, masterpiece, highly detailed". Use exact trait_tags for locked characters/locations.
+3. PROMPT FORMAT (CRITICAL): You MUST format every single `visual_prompt` EXACTLY using this strict bracketed template. Do NOT write natural prose. Do NOT include any art style descriptions. Fill in every bracket perfectly: `[Character's exact trait_tags and appearance] [Single frozen action] [Surrounding environment and location trait_tags] [Character emotion] [Camera angle/shot type]`.
 4. CHARACTERS: Maximum 3 characters present in any single scene.
 5. TRANSITION: ["cut", "dissolve", "flashback_fade", "fade_to_black"]. cut=0.0.
 6. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
@@ -405,9 +405,13 @@ RULES:
         
         chunk_scenes = result.get("scenes", [])
         
-        # Renumber scene_ids to be globally sequential
+        global_style = "High-quality graphic novel illustration, detailed comic book art style, dramatic cinematic lighting, gritty realism, masterpiece, highly detailed."
+        
+        # Renumber scene_ids to be globally sequential and inject the global style
         for s in chunk_scenes:
             s["scene_id"] = scene_counter
+            vp = s.get("visual_prompt", "")
+            s["visual_prompt"] = f"[{global_style}] {vp}"
             scene_counter += 1
         
         all_scenes.extend(chunk_scenes)
