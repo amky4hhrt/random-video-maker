@@ -103,7 +103,7 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
     
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-pro",
+            model="gemini-1.5-pro-latest",
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=sys_inst,
