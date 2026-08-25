@@ -67,7 +67,9 @@ def main():
         print("-" * 50)
         
         from py_files.vision_editor import run_vision_pass
-        run_vision_pass(str(ENG_ASSETS))
+        if not run_vision_pass(str(ENG_ASSETS)):
+            print("\u274C Vision Pass failed. Aborting Render.")
+            sys.exit(1)
         
         # Render English
         en_final = ENG_OUT / "final_en_short.mp4"
