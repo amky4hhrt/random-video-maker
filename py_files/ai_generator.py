@@ -337,11 +337,8 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, is_sh
                             )
                         ),
                         "visual_prompt": types.Schema(type=types.Type.STRING),
-                        "camera_movement": types.Schema(type=types.Type.STRING, enum=["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "push_in_pan_left", "push_in_pan_right", "push_out_tilt_up", "push_out_tilt_down", "slow_drift", "orbit"]),
-                        "transition_type": types.Schema(type=types.Type.STRING, enum=["cut", "dissolve", "flashback_fade", "fade_to_black"]),
-                        "transition_duration": types.Schema(type=types.Type.NUMBER),
                     },
-                    required=["scene_id", "start_time", "end_time", "scene_type", "visual_prompt", "camera_movement", "transition_type", "transition_duration"]
+                    required=["scene_id", "start_time", "end_time", "scene_type", "visual_prompt"]
                 )
             )
         },
@@ -383,12 +380,10 @@ LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
 
 RULES:
 1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
-2. CAMERA: Use one of: ["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "push_in_pan_left", "push_in_pan_right", "push_out_tilt_up", "push_out_tilt_down", "slow_drift", "orbit"]. Every scene MUST have motion!
-3. PROMPT FORMAT (CRITICAL): You MUST format every single `visual_prompt` EXACTLY using this strict comma-separated template. Do NOT write natural prose. Do NOT include any art style descriptions. Fill in every section perfectly and separate them with commas: `Character's exact trait_tags and appearance, Single frozen action, Surrounding environment and location trait_tags, Character emotion, Camera angle/shot type`.
-4. CHARACTERS: Maximum 3 characters present in any single scene.
-5. TRANSITION: ["cut", "dissolve", "flashback_fade", "fade_to_black"]. cut=0.0.
-6. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
-7. NAMES (CRITICAL): In visual_prompt, ONLY use first names for characters. NEVER use full names or surnames (e.g. write "Meera" not "Meera Sharma"). This is required by the image generator's content policy.
+2. PROMPT FORMAT (CRITICAL): You MUST format every single `visual_prompt` EXACTLY using this strict comma-separated template. Do NOT write natural prose. Do NOT include any art style descriptions. Fill in every section perfectly and separate them with commas: `Character's exact trait_tags and appearance, Single frozen action, Surrounding environment and location trait_tags, Character emotion, Camera angle/shot type`.
+3. CHARACTERS: Maximum 3 characters present in any single scene.
+4. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
+5. NAMES (CRITICAL): In visual_prompt, ONLY use first names for characters. NEVER use full names or surnames (e.g. write "Meera" not "Meera Sharma"). This is required by the image generator's content policy.
 8. CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your visual_prompts MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, abstract metaphors, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
 9. SINGLE ACTION RULE (CRITICAL): An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
 {context_block}"""
@@ -445,27 +440,22 @@ def _resolve_triggers(trigger_words, words, search_after_index=-1):
                 return {"matched_word": w["word"], "word_index": idx, "start_time": w["start"], "end_time": w["end"]}
     return None
 
-def run_music_pass(story_text, transcript_data, output_path, music_lib_path, sfx_lib_path):
+def run_music_pass(story_text, transcript_data, output_path, sfx_lib_path):
     print("  \U0001F3B5 Running Music & SFX Pass...")
     client = get_gemini_client()
-    
-    music_lib = {}
-    if os.path.exists(music_lib_path):
-        with open(music_lib_path, "r") as f: music_lib = json.load(f)
         
     sfx_lib = {}
     if os.path.exists(sfx_lib_path):
         with open(sfx_lib_path, "r") as f: sfx_lib = json.load(f)
         
-    m_menu = "\\n".join(f"- {k}: {v.get('emotion')}" for k, v in music_lib.items()) or "None"
     s_menu = "\\n".join(f"- {k}: {v}" for k, v in sfx_lib.items()) or "None"
     
-    sys_inst = f"""You are a Composer & Sound Designer. Break the narration into music tracks and identify SFX/duck cues.
-Use existing library IDs if appropriate, or invent new ones.
-EXISTING MUSIC: {m_menu}
+    sys_inst = f"""You are an Elite Film Composer & Sound Designer. Score this video by breaking the narration into multiple emotional movements.
+1. INVENT completely new, unique `music_id`s for this video. Generate a highly descriptive `music_prompt` for each distinct emotional phase so the user can generate the track using an AI music tool. Do NOT reuse tracks.
+2. Use 'start_trigger_words' to precisely map exactly when a new music track should fade in and take over the score.
+3. Strategically place `duck_cues` to dynamically lower the volume of the music during intense dialogue or SFX moments.
+4. For SFX, use existing library IDs if appropriate, or invent new ones. Provide an 'sfx_description' that precisely describes the acoustic properties.
 EXISTING SFX: {s_menu}
-Provide arrays of 'trigger_words' (real words from narration) to mark cue points.
-For SFX cues, provide an 'sfx_description' that precisely describes the acoustic properties of the sound effect (e.g. "A heavy wooden door slamming shut with a reverberating echo"). Do NOT just describe the story reason.
 """
     schema = types.Schema(
         type=types.Type.OBJECT,
@@ -515,8 +505,6 @@ For SFX cues, provide an 'sfx_description' that precisely describes the acoustic
             last_idx = r["word_index"]
             mt["start_time"] = r["start_time"]
             resolved_tracks.append(mt)
-            if mt["music_id"] not in music_lib:
-                music_lib[mt["music_id"]] = {"emotion": mt["emotion"], "music_prompt": mt["music_prompt"]}
                 
     resolved_sfx = []
     last_idx = -1
@@ -546,9 +534,6 @@ For SFX cues, provide an 'sfx_description' that precisely describes the acoustic
     
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(final_blueprint, f, indent=4)
-        
-    with open(music_lib_path, "w", encoding="utf-8") as f:
-        json.dump(music_lib, f, indent=4)
         
     with open(sfx_lib_path, "w", encoding="utf-8") as f:
         json.dump(sfx_lib, f, indent=4)
@@ -585,7 +570,7 @@ def generate_blueprints(project_dir, is_short=False):
         run_director_pass(story_text, transcript_data, char_data, vid_out, is_short=is_short)
         
         # Shorts might not need a complex music pass in the same way, but let's run it anyway
-        run_music_pass(story_text, transcript_data, mus_out, mus_lib, sfx_lib)
+        run_music_pass(story_text, transcript_data, mus_out, sfx_lib)
         
         print("  \u2705 Blueprints successfully generated!")
         return True
@@ -752,7 +737,7 @@ def generate_hindi_blueprints(eng_visual_dir, hin_audio_dir, is_short=False):
         run_hindi_director_pass(hin_story_text, hin_transcript_data, eng_vid_bp, hin_vid_out, is_short=is_short)
         print("  \u2705 Hindi Video Blueprint successfully generated!")
         
-        run_music_pass(hin_story_text, hin_transcript_data, hin_mus_out, mus_lib, sfx_lib)
+        run_music_pass(hin_story_text, hin_transcript_data, hin_mus_out, sfx_lib)
         print("  \u2705 Hindi Music Blueprint successfully generated!")
         return True
     except Exception as e:

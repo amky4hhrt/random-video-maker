@@ -58,18 +58,22 @@ def main():
         print("NEXT STEPS:")
         print("1. Review english_short_assets/character_prompts.json and video_blueprint.json")
         print("2. Generate 9:16 images and save them in english_short_assets/ with scene IDs (e.g. 1.jpg)")
-        print("3. Optional: Add required music/SFX files to music/ and sfx/ folders")
-        print("4. Optional: Place Hindi story.txt and voiceover.* in hindi_short_assets/")
-        print("5. Run this script again to Render!")
+        print("3. Generate the unique music tracks from music_blueprint.json and save them in english_short_assets/")
+        print("4. Optional: Add required SFX files to the global sfx/ folder")
+        print("5. Optional: Place Hindi story.txt and voiceover.* in hindi_short_assets/")
+        print("6. Run this script again to Render!")
     else:
         print("\nPhase 2: Render (Images found in english_short_assets)")
         print("-" * 50)
+        
+        from py_files.vision_editor import run_vision_pass
+        run_vision_pass(str(ENG_ASSETS))
         
         # Render English
         en_final = ENG_OUT / "final_en_short.mp4"
         en_ok = True
         if not en_final.exists():
-            en_ok = render_short_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
+            en_ok = render_short_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(ENG_ASSETS), str(SFX_DIR), language="en")
             if not en_ok:
                 print("  \u274C English render FAILED \u2014 see errors above.")
             elif not en_final.exists():
@@ -106,7 +110,7 @@ def main():
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=True)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
-                    hin_ok = render_short_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    hin_ok = render_short_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(HIN_ASSETS), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
                     if not hin_ok:
                         print("  \u274C Hindi render FAILED \u2014 see errors above.")
                     elif not hin_final.exists():

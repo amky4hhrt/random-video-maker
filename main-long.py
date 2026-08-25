@@ -64,17 +64,21 @@ def main():
         print("1. Review english_long_assets/character_prompts.json and video_blueprint.json")
         print("2. Generate 16:9 images using the Google Flow Auto-Prompter extension")
         print("3. Save them in english_long_assets/ with scene IDs (e.g. 1.jpg, 2_image.jpg)")
-        print("4. Optional: Add required music/SFX files to music/ and sfx/ folders")
-        print("5. Optional: Place Hindi story.txt and voiceover.* in hindi_long_assets/")
-        print("6. Run this script again to Render!")
+        print("4. Generate the unique music tracks from music_blueprint.json and save them in english_long_assets/")
+        print("5. Optional: Add required SFX files to the global sfx/ folder")
+        print("6. Optional: Place Hindi story.txt and voiceover.* in hindi_long_assets/")
+        print("7. Run this script again to Render!")
     else:
         print("\nPhase 2: Render (Images found in english_long_assets)")
         print("-" * 50)
         
+        from py_files.vision_editor import run_vision_pass
+        run_vision_pass(str(ENG_ASSETS))
+        
         # Render English
         en_final = ENG_OUT / "final_en_long.mp4"
         if not en_final.exists():
-            render_long_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
+            render_long_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(ENG_ASSETS), str(SFX_DIR), language="en")
         else:
             print(f"  \u2705 English video already rendered ({en_final.name}). Skipping.")
         
@@ -102,7 +106,7 @@ def main():
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=False)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
-                    render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(HIN_ASSETS), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
         else:
             print("\nℹ️ No Hindi story.txt or voiceover found in hindi_long_assets. Skipping Hindi render.")
             
