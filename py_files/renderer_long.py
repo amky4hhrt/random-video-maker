@@ -152,8 +152,8 @@ def find_asset(input_dir, base_name, extensions):
     return None
 
 # ─── Audio Ducking & Bed ──────────────────────────────────────────
-BGM_BASE_MULTIPLIER  = 1.0
-BGM_DUCK_MULTIPLIER  = 0.30
+BGM_BASE_MULTIPLIER  = 0.50
+BGM_DUCK_MULTIPLIER  = 0.12
 VOLUME_RAMP_SECONDS  = 1.2
 
 def build_volume_breakpoints(music_data: dict, active_end: float) -> list:
@@ -232,10 +232,20 @@ def build_sfx_bed(sfx_placements, total_duration, output_path):
 
 def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_audio, total_duration):
     m_placements = []
-    for mt in music_bp.get("music_tracks", []):
+    tracks = music_bp.get("music_tracks", [])
+    for i, mt in enumerate(tracks):
         m_id = mt.get("music_id", "")
         m_path = find_asset(music_dir, m_id, AUDIO_EXTENSIONS)
-        if m_path: m_placements.append((m_path, mt.get("start_time", 0.0), mt.get("end_time", 999999.0)))
+        
+        start_t = mt.get("start_time", 0.0)
+        
+        if i + 1 < len(tracks):
+            next_start = tracks[i+1].get("start_time", total_duration)
+            end_t = min(total_duration, next_start + 2.0) # 2s overlap for crossfade
+        else:
+            end_t = total_duration
+            
+        if m_path: m_placements.append((m_path, start_t, end_t))
         
     s_placements = []
     for st in music_bp.get("sfx_cues", []):
