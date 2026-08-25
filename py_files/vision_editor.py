@@ -2,17 +2,15 @@ import os
 import json
 import glob
 from pathlib import Path
-import google.generativeai as genai
-from google.generativeai import types
+from google import genai
+from google.genai import types
 from PIL import Image
 
 def get_gemini_client():
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable not set.")
-    genai.configure(api_key=api_key)
-    # Use Gemini 1.5 Pro because we are analyzing multiple images
-    return genai.GenerativeModel("gemini-1.5-pro-latest")
+    return genai.Client(api_key=api_key)
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
@@ -104,14 +102,15 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
     client = get_gemini_client()
     
     try:
-        response = client.generate_content(
+        response = client.models.generate_content(
+            model="gemini-1.5-pro",
             contents=contents,
-            generation_config=genai.GenerationConfig(
+            config=types.GenerateContentConfig(
+                system_instruction=sys_inst,
                 response_mime_type="application/json",
                 response_schema=schema,
                 temperature=0.4
-            ),
-            system_instruction=sys_inst
+            )
         )
         
         result = json.loads(response.text)
