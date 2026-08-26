@@ -3,9 +3,9 @@ import json
 import re
 from PIL import Image, ImageDraw, ImageFont
 
-MIN_WORDS_PER_GROUP_SHORT = 2
+MIN_WORDS_PER_GROUP_SHORT = 1
 MAX_WORDS_PER_GROUP_SHORT = 2
-MIN_WORDS_PER_GROUP_LONG = 3
+MIN_WORDS_PER_GROUP_LONG = 1
 MAX_WORDS_PER_GROUP_LONG = 4
 MAX_CHARS_PER_GROUP_SHORT = 14       # portrait (1080x1920)
 MAX_CHARS_PER_GROUP_LANDSCAPE = 40   # landscape (1920x1080)
@@ -94,7 +94,7 @@ def generate_subtitle_file(transcript_data, blueprint_data, output_path, is_shor
     font_size = 135 if is_short else 114
     max_chars = MAX_CHARS_PER_GROUP_SHORT if is_short else MAX_CHARS_PER_GROUP_LANDSCAPE
     margin_l, margin_r = 80, 80
-    margin_v = 160 if is_short else 90
+    margin_v = 280 if is_short else 90
     outline_width = round(font_size * OUTLINE_WIDTH_FACTOR, 1)
     shadow_depth = round(font_size * SHADOW_DEPTH_FACTOR, 1)
     
@@ -185,7 +185,7 @@ def generate_subtitle_images(transcript_data, blueprint_data, output_dir, langua
     res_x, res_y = (1080, 1920) if is_short else (1920, 1080)
     font_size = 135 if is_short else 114
     max_chars = MAX_CHARS_PER_GROUP_SHORT if is_short else MAX_CHARS_PER_GROUP_LANDSCAPE
-    margin_v = 160 if is_short else 90
+    margin_v = 280 if is_short else 90
     outline_width = round(font_size * OUTLINE_WIDTH_FACTOR, 1)
     shadow_depth = round(font_size * SHADOW_DEPTH_FACTOR, 1)
 
