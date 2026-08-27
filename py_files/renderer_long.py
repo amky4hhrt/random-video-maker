@@ -93,6 +93,16 @@ def build_ken_burns_filter(camera_movement: str, frames: int, width: int, height
         zp = f"{pre_scale},zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='(ih-(ih/1.1))*(1.0-{ease})':d={d}:s={res}:fps=30"
     elif cm == "tilt_down":
         zp = f"{pre_scale},zoompan=z=1.1:x='iw/2-(iw/zoom/2)':y='(ih-(ih/1.1))*({ease})':d={d}:s={res}:fps=30"
+    elif cm == "zoom_in_left":
+        zp = f"{pre_scale},zoompan=z='1.0+({amp}*{ease})':d={d}:x='0':y='ih/2-(ih/zoom/2)':s={res}:fps=30"
+    elif cm == "zoom_in_right":
+        zp = f"{pre_scale},zoompan=z='1.0+({amp}*{ease})':d={d}:x='iw-(iw/zoom)':y='ih/2-(ih/zoom/2)':s={res}:fps=30"
+    elif cm == "zoom_out_left":
+        zp = f"{pre_scale},zoompan=z='(1.0+{amp})-({amp}*{ease})':d={d}:x='0':y='ih/2-(ih/zoom/2)':s={res}:fps=30"
+    elif cm == "zoom_out_right":
+        zp = f"{pre_scale},zoompan=z='(1.0+{amp})-({amp}*{ease})':d={d}:x='iw-(iw/zoom)':y='ih/2-(ih/zoom/2)':s={res}:fps=30"
+    elif cm == "static":
+        zp = f"{pre_scale},zoompan=z='1.0':d={d}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={res}:fps=30"
     else:
         # Fallback to simple push_in
         zp = f"{pre_scale},zoompan=z='1.0+({amp}*{ease})':d={d}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={res}:fps=30"
@@ -310,8 +320,9 @@ def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
     2. xfade between segments.
     """
     TRANSITION_FILTER_MAP = {
-        "dissolve": "fadewhite",
+        "dissolve": "fade",
         "flashback_fade": "fadewhite",
+        "fade_to_black": "fadeblack",
         "fade": "fade" # Standard fallback
     }
 

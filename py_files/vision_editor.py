@@ -65,7 +65,7 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
                     type=types.Type.OBJECT,
                     properties={
                         "scene_id": types.Schema(type=types.Type.INTEGER),
-                        "camera_movement": types.Schema(type=types.Type.STRING, enum=["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down"]),
+                        "camera_movement": types.Schema(type=types.Type.STRING, enum=["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "zoom_in_left", "zoom_in_right", "zoom_out_left", "zoom_out_right", "static"]),
                         "transition_type": types.Schema(type=types.Type.STRING, enum=["cut", "dissolve", "flashback_fade", "fade_to_black"]),
                         "transition_duration": types.Schema(type=types.Type.NUMBER, description="Duration in seconds. Use 0.0 for cut. Use 0.8 to 1.5 for dissolves/fades."),
                     },
