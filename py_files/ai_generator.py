@@ -431,7 +431,7 @@ RULES:
 
 def _normalize_word(w):
     import re
-    return re.sub(r"[^a-z0-9']", "", w.lower().strip())
+    return re.sub(r"[^\w']", "", w.lower().strip())
 
 def _resolve_triggers(trigger_words, words, search_after_index=-1):
     for candidate in trigger_words or []:
@@ -498,16 +498,21 @@ EXISTING SFX: {s_menu}
     # Music Pass ALWAYS uses Gemini for reliable structured output.
     result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
     
+    print("    -> AI Output generated. Resolving timestamps...")
     # Resolve timestamps
     words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
     resolved_tracks = []
     last_idx = -1
-    for mt in result.get("music_tracks", []):
+    raw_tracks = result.get("music_tracks", [])
+    print(f"    -> AI returned {len(raw_tracks)} raw music tracks.")
+    for mt in raw_tracks:
         r = _resolve_triggers(mt["start_trigger_words"], words, last_idx)
         if r:
             last_idx = r["word_index"]
             mt["start_time"] = r["start_time"]
             resolved_tracks.append(mt)
+        else:
+            print(f"      \u26A0\uFE0F Failed to match trigger words for music_id: {mt.get('music_id')} -> {mt.get('start_trigger_words')}")
                 
     resolved_sfx = []
     last_idx = -1
@@ -519,6 +524,8 @@ EXISTING SFX: {s_menu}
             resolved_sfx.append(sfx)
             if sfx["sfx_id"] not in sfx_lib:
                 sfx_lib[sfx["sfx_id"]] = sfx.get("sfx_description", sfx.get("reason", ""))
+        else:
+            print(f"      \u26A0\uFE0F Failed to match trigger words for SFX: {sfx.get('sfx_id')}")
                 
     resolved_duck = []
     last_idx = -1
@@ -528,6 +535,8 @@ EXISTING SFX: {s_menu}
             last_idx = r["word_index"]
             duck["start_time"] = r["start_time"]
             resolved_duck.append(duck)
+        else:
+            print(f"      \u26A0\uFE0F Failed to match trigger words for duck cue.")
             
     final_blueprint = {
         "music_tracks": resolved_tracks,
