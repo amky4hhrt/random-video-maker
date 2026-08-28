@@ -435,12 +435,33 @@ def _normalize_word(w):
 
 def _resolve_triggers(trigger_words, words, search_after_index=-1):
     for candidate in trigger_words or []:
-        nc = _normalize_word(candidate)
-        if not nc: continue
-        for idx, w in enumerate(words):
-            if idx <= search_after_index: continue
-            if _normalize_word(w["word"]) == nc:
-                return {"matched_word": w["word"], "word_index": idx, "start_time": w["start"], "end_time": w["end"]}
+        cand_words = [_normalize_word(x) for x in candidate.split()]
+        cand_words = [x for x in cand_words if x]
+        if not cand_words: continue
+        
+        # 1. Try exact sequence match
+        for idx in range(search_after_index + 1, max(0, len(words) - len(cand_words) + 1)):
+            match = True
+            for i, cw in enumerate(cand_words):
+                if _normalize_word(words[idx + i]["word"]) != cw:
+                    match = False
+                    break
+            if match:
+                return {"matched_word": words[idx]["word"], "word_index": idx, "start_time": words[idx]["start"], "end_time": words[idx]["end"]}
+                
+        # 2. Fallback: match the first non-trivial word (>= 4 chars)
+        for cw in cand_words:
+            if len(cw) >= 4:
+                for idx in range(search_after_index + 1, len(words)):
+                    if _normalize_word(words[idx]["word"]) == cw:
+                        return {"matched_word": words[idx]["word"], "word_index": idx, "start_time": words[idx]["start"], "end_time": words[idx]["end"]}
+                        
+        # 3. Ultimate Fallback: just match the first word if we couldn't find a long one
+        for cw in cand_words:
+            for idx in range(search_after_index + 1, len(words)):
+                if _normalize_word(words[idx]["word"]) == cw:
+                    return {"matched_word": words[idx]["word"], "word_index": idx, "start_time": words[idx]["start"], "end_time": words[idx]["end"]}
+                    
     return None
 
 def run_music_pass(story_text, transcript_data, output_path, sfx_lib_path):
