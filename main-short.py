@@ -33,8 +33,9 @@ def main():
     print("📱 UNIFIED SHORT-FORM VIDEO MAKER")
     print("=" * 50)
     
-    if not has_images(ENG_ASSETS):
-        print("\nPhase 1: Generation (No images found in english_short_assets)")
+    bp_missing = not os.path.exists(os.path.join(str(ENG_ASSETS), "video_blueprint.json")) or not os.path.exists(os.path.join(str(ENG_ASSETS), "music_blueprint.json"))
+    if not has_images(ENG_ASSETS) or bp_missing:
+        print("\nPhase 1: Generation (Blueprints or Images missing)")
         print("-" * 50)
         
         # 1. English Transcript

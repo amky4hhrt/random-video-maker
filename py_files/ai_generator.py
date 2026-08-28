@@ -599,13 +599,24 @@ def generate_blueprints(project_dir, is_short=False):
     sfx_lib = base_dir / "sfx" / "sfx_library.json"
     
     try:
-        char_data = run_character_pass(story_text, char_out)
-        run_director_pass(story_text, transcript_data, char_data, vid_out, is_short=is_short)
+        if not char_out.exists():
+            char_data = run_character_pass(story_text, char_out)
+        else:
+            with open(char_out, "r", encoding="utf-8") as f: char_data = json.load(f)
+            print("  \u2705 Skipping Character Pass (character_prompts.json already exists)")
+
+        if not vid_out.exists():
+            run_director_pass(story_text, transcript_data, char_data, vid_out, is_short=is_short)
+        else:
+            print("  \u2705 Skipping Director Pass (video_blueprint.json already exists)")
         
         # Shorts might not need a complex music pass in the same way, but let's run it anyway
-        run_music_pass(story_text, transcript_data, mus_out, sfx_lib)
+        if not mus_out.exists():
+            run_music_pass(story_text, transcript_data, mus_out, sfx_lib)
+        else:
+            print("  \u2705 Skipping Music Pass (music_blueprint.json already exists)")
         
-        print("  \u2705 Blueprints successfully generated!")
+        print("  \u2705 Blueprints successfully generated (or already exist)!")
         return True
     except Exception as e:
         print(f"  \u274C Blueprint Generation failed: {e}")
@@ -767,11 +778,18 @@ def generate_hindi_blueprints(eng_visual_dir, hin_audio_dir, is_short=False):
     sfx_lib = base_dir / "sfx" / "sfx_library.json"
     
     try:
-        run_hindi_director_pass(hin_story_text, hin_transcript_data, eng_vid_bp, hin_vid_out, is_short=is_short)
-        print("  \u2705 Hindi Video Blueprint successfully generated!")
+        if not hin_vid_out.exists():
+            run_hindi_director_pass(hin_story_text, hin_transcript_data, eng_vid_bp, hin_vid_out, is_short=is_short)
+            print("  \u2705 Hindi Video Blueprint successfully generated!")
+        else:
+            print("  \u2705 Skipping Hindi Video Blueprint (already exists)")
         
-        run_music_pass(hin_story_text, hin_transcript_data, hin_mus_out, sfx_lib)
-        print("  \u2705 Hindi Music Blueprint successfully generated!")
+        if not hin_mus_out.exists():
+            run_music_pass(hin_story_text, hin_transcript_data, hin_mus_out, sfx_lib)
+            print("  \u2705 Hindi Music Blueprint successfully generated!")
+        else:
+            print("  \u2705 Skipping Hindi Music Blueprint (already exists)")
+            
         return True
     except Exception as e:
         print(f"  \u274C Hindi Blueprint Generation failed: {e}")

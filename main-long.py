@@ -33,8 +33,9 @@ def main():
     print("🎬 UNIFIED LONG-FORM VIDEO MAKER")
     print("=" * 50)
     
-    if not has_images(ENG_ASSETS):
-        print("\nPhase 1: Generation (No images found in english_long_assets)")
+    bp_missing = not os.path.exists(os.path.join(str(ENG_ASSETS), "video_blueprint.json")) or not os.path.exists(os.path.join(str(ENG_ASSETS), "music_blueprint.json"))
+    if not has_images(ENG_ASSETS) or bp_missing:
+        print("\nPhase 1: Generation (Blueprints or Images missing)")
         print("-" * 50)
         
         # 1. English Transcript
@@ -49,15 +50,10 @@ def main():
                 print("\u274C English transcription failed. Ensure story.txt and voiceover.* exist.")
                 sys.exit(1)
         # 2. English Blueprints
-        char_bp = os.path.join(str(ENG_ASSETS), "character_prompts.json")
-        vid_bp = os.path.join(str(ENG_ASSETS), "video_blueprint.json")
-        if os.path.exists(char_bp) and os.path.exists(vid_bp):
-            print("\n🧠 Blueprints already exist. Skipping generation.")
-        else:
-            print("\n🧠 Generating English Blueprints...")
-            if not generate_blueprints(str(ENG_ASSETS), is_short=False):
-                print("❌ Blueprint generation failed.")
-                sys.exit(1)
+        print("\n🧠 Generating English Blueprints...")
+        if not generate_blueprints(str(ENG_ASSETS), is_short=False):
+            print("❌ Blueprint generation failed.")
+            sys.exit(1)
             
         print("\n✅ Phase 1 Complete!")
         print("NEXT STEPS:")
