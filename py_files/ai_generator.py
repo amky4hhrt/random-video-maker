@@ -634,7 +634,7 @@ ENGLISH VIDEO BLUEPRINT (the source storyboard you are adapting):
 
 RULES:
 1. SEMANTIC MATCHING (CRITICAL): Read the Hindi Story provided below, which is broken down into numbered sentences (e.g., [0], [1], [2]). Identify the specific topics/events being spoken about. Find the 'english_source_scene_id' from the English Video Blueprint that best matches that topic.
-2. AGGRESSIVE GROUPING (CRITICAL): You MUST group multiple consecutive sentences together into a SINGLE long scene if they share the same visual topic. DO NOT create one scene per sentence. A single scene should span many sentences (e.g., start_index: 0, end_index: 12).
+2. FAST PACING (CRITICAL): The English video uses rapid scene changes. You MUST use as many of the provided English scenes as possible to maintain this fast pacing. Do not group too many sentences together. Switch images frequently, typically every 1 or 2 sentences!
 3. OUTPUT: For each scene, output a sequentially increasing 'scene_id' (1, 2, 3...), the 'english_source_scene_id' you are linking to, and the index number of the first sentence ('start_index') and the index number of the last sentence ('end_index') that belong to that scene. Ensure every sentence from 0 to {len(sentences)-1} is covered!
 4. REUSE RULES: You may reuse the same english_source_scene_id later if the topic returns, but DO NOT use the same ID in consecutive scenes.
 5. NO INVENTED IDS (CRITICAL): You MUST ONLY use the exact integer 'english_source_scene_id' values provided in the English Video Blueprint. DO NOT invent new IDs.
