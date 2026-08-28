@@ -5,6 +5,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from PIL import Image
+import subprocess
 
 def get_gemini_client():
     api_key = os.getenv("GEMINI_API_KEY")
@@ -13,9 +14,10 @@ def get_gemini_client():
     return genai.Client(api_key=api_key)
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+VIDEO_EXTS = (".mp4", ".mov", ".mkv", ".webm")
 
 def find_asset(input_dir, base_name):
-    for ext in IMAGE_EXTS:
+    for ext in IMAGE_EXTS + VIDEO_EXTS:
         exact = os.path.join(input_dir, f"{base_name}{ext}")
         if os.path.exists(exact): return exact
         matches = glob.glob(os.path.join(input_dir, f"{base_name}[_ \\-\\.]*{ext}"))
@@ -51,8 +53,14 @@ def run_vision_pass(project_dir):
 Look at the sequence of images carefully. Understand the visual composition of each one.
 - If the subject is on the left, you might pan_left or push_in.
 - If it's a tight close-up portrait, do not zoom too fast.
-- If there is a drastic change in lighting or location between two images, use a 'dissolve' or 'fade_to_black' transition instead of a 'cut'.
+- If there is a drastic change in lighting or location between two scenes, use a 'dissolve' or 'fade_to_black' transition instead of a 'cut'.
 - If the images flow naturally, use a 'cut'.
+
+CRITICAL RULE FOR VIDEO FILES:
+Some scenes might be provided as TWO images labeled "(Start of Video)" and "(End of Video)".
+Even if there are two images for a scene, you MUST output EXACTLY ONE camera_movement and ONE transition_type for that Scene ID.
+Use the 'Start' image to decide how the previous scene transitions into this one. Use the 'End' image to decide how this scene transitions into the next one, and use the 'End' image to decide the camera movement in case the video freezes.
+
 Assign EXACTLY ONE camera movement and transition per scene. The schema uses strict ENUM values. You must select from them.
 """
 
@@ -116,6 +124,11 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
         result = json.loads(response.text)
         vision_scenes = result.get("scenes", [])
         
+        # Cleanup temp images
+        for f in glob.glob(os.path.join(str(proj), "temp_*_*.jpg")):
+            try: os.remove(f)
+            except: pass
+
         # Merge results back into original blueprint
         vision_map = {s["scene_id"]: s for s in vision_scenes}
         
