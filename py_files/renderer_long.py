@@ -6,7 +6,20 @@ import time
 
 CPU_THREADS = 2
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff")
+VIDEO_EXTENSIONS = (".mp4", ".mov", ".mkv", ".webm")
 AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg")
+
+def get_media_type(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in VIDEO_EXTENSIONS: return "video"
+    return "image"
+
+def get_video_duration(path):
+    try:
+        res = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path], stderr=subprocess.STDOUT)
+        return float(res.decode().strip())
+    except:
+        return 0.0
 
 def _detect_nvenc() -> bool:
     try:

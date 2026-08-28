@@ -3,9 +3,10 @@ import json
 import subprocess
 import shutil
 from py_files.renderer_long import (
-    generate_audio_mix, find_asset, AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, 
-    run_ffmpeg, _video_encode_args, build_ken_burns_filter, get_easing_profile,
-    stitch_with_crossfades, CPU_THREADS, _smooth_camera_rhythm
+    generate_audio_mix, find_asset, AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, 
+    get_media_type, get_video_duration, run_ffmpeg, _video_encode_args, 
+    build_ken_burns_filter, get_easing_profile, stitch_with_crossfades, 
+    CPU_THREADS, _smooth_camera_rhythm
 )
 from py_files.captions import generate_subtitle_file, generate_subtitle_images
 
@@ -79,9 +80,9 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
         src_id = scene.get("english_source_scene_id")
         sid = src_id if src_id else scene.get("scene_id")
         
-        img = find_asset(image_dir or visual_dir, str(sid), IMAGE_EXTENSIONS)
-        if not img:
-            print(f"  \u26A0\uFE0F Missing image for scene {sid}, skipping.")
+        asset_path = find_asset(image_dir or visual_dir, str(sid), IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
+        if not asset_path:
+            print(f"  \u26A0\uFE0F Missing visual asset for scene {sid}, skipping.")
             continue
             
         start = 0.0 if i == 0 else scene.get("start_time", 0.0)
@@ -97,8 +98,8 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
             trans_dur = 0.0
             safety_pad = 0.0
         else:
-            trans_dur = float(scene.get("transition_duration", 0.5))
-            if trans_dur <= 0.0: trans_dur = 0.5
+            trans_dur = float(scene.get("transition_duration", 0.8))
+            if trans_dur <= 0.0: trans_dur = 0.8
             safety_pad = 0.3
             
         render_dur = base_dur + trans_dur + safety_pad
@@ -106,14 +107,47 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
         
         camera_movement = str(scene.get("camera_movement", "push_in")).lower()
         profile = get_easing_profile(scene)
-        
-        # Use the same Ken Burns engine but targeting 1080x1920 (vertical)
-        vf = build_ken_burns_filter(camera_movement, frames, WIDTH, HEIGHT, profile)
-            
         out_clip = os.path.join(temp_dir, f"clip_{i}_{sid}.mp4")
-        cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", img, "-t", str(render_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [out_clip]
         
-        if run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})"):
+        mtype = get_media_type(asset_path)
+        success = False
+        
+        if mtype == "image":
+            vf = build_ken_burns_filter(camera_movement, frames, WIDTH, HEIGHT, profile)
+            cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", asset_path, "-t", str(render_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [out_clip]
+            success = run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})")
+        else:
+            video_dur = get_video_duration(asset_path)
+            scale_filter = f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT}"
+            
+            if video_dur >= render_dur:
+                cmd = ["ffmpeg", "-y", "-i", asset_path, "-t", str(render_dur), "-vf", f"{scale_filter},fps=30"] + _video_encode_args("fast") + [out_clip]
+                success = run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})")
+            else:
+                vid_part = os.path.join(temp_dir, f"clip_{i}_{sid}_vid.mp4")
+                cmd_vid = ["ffmpeg", "-y", "-i", asset_path, "-vf", f"{scale_filter},fps=30"] + _video_encode_args("fast") + [vid_part]
+                run_ffmpeg(cmd_vid, f"Scene {i+1}/{total_scenes} (ID:{sid} P1)")
+                
+                last_frame_img = os.path.join(temp_dir, f"clip_{i}_{sid}_last.jpg")
+                cmd_frame = ["ffmpeg", "-y", "-sseof", "-0.1", "-i", asset_path, "-update", "1", "-q:v", "2", last_frame_img]
+                run_ffmpeg(cmd_frame, f"Scene {i+1}/{total_scenes} (ID:{sid} Frame)")
+                
+                rem_dur = render_dur - video_dur
+                rem_frames = max(int(rem_dur * 30), 2)
+                vf = build_ken_burns_filter(camera_movement, rem_frames, WIDTH, HEIGHT, profile)
+                img_part = os.path.join(temp_dir, f"clip_{i}_{sid}_img.mp4")
+                cmd_img = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", last_frame_img, "-t", str(rem_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [img_part]
+                run_ffmpeg(cmd_img, f"Scene {i+1}/{total_scenes} (ID:{sid} P2)")
+                
+                list_file = os.path.join(temp_dir, f"list_{i}_{sid}.txt")
+                with open(list_file, "w") as f:
+                    f.write(f"file '{os.path.abspath(vid_part)}'\n")
+                    f.write(f"file '{os.path.abspath(img_part)}'\n")
+                
+                cmd_concat = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c:v", "copy", out_clip]
+                success = run_ffmpeg(cmd_concat, f"Scene {i+1}/{total_scenes} (ID:{sid})")
+
+        if success:
             clip_paths.append(out_clip)
             clip_info.append({
                 "base_duration": base_dur,
