@@ -131,6 +131,9 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
                 s["camera_movement"] = "push_in"
                 s["transition_type"] = "cut"
                 s["transition_duration"] = 0.0
+            
+            if "duration" not in s:
+                s["duration"] = round(s.get("end_time", 0.0) - s.get("start_time", 0.0), 3)
                 
         # Re-save
         if "video_blueprint" in vid_bp:

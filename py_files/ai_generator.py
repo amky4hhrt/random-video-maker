@@ -407,7 +407,10 @@ RULES:
             s["scene_id"] = scene_counter
             vp = s.get("visual_prompt", "")
             vp_clean = vp.replace("[", "").replace("]", "")
-            s["visual_prompt"] = f"{global_style}, {vp_clean}"
+            s["visual_prompt"] = f"{global_style}, {vp_clean}, no text box"
+            start_t = s.get("start_time", 0.0)
+            end_t = s.get("end_time", 0.0)
+            s["duration"] = round(end_t - start_t, 3)
             scene_counter += 1
         
         all_scenes.extend(chunk_scenes)
