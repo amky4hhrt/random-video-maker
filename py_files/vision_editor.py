@@ -97,13 +97,27 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
         
         if img_path:
             try:
-                img = Image.open(img_path)
-                contents.append(f"Image for Scene ID: {sid}")
-                contents.append(img)
+                ext = os.path.splitext(img_path)[1].lower()
+                if ext in VIDEO_EXTS:
+                    start_jpg = os.path.join(str(proj), f"temp_start_{sid}.jpg")
+                    end_jpg = os.path.join(str(proj), f"temp_end_{sid}.jpg")
+                    subprocess.run(["ffmpeg", "-y", "-i", img_path, "-vframes", "1", "-q:v", "2", start_jpg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(["ffmpeg", "-y", "-sseof", "-0.1", "-i", img_path, "-update", "1", "-q:v", "2", end_jpg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    if os.path.exists(start_jpg):
+                        contents.append(f"Image for Scene ID: {sid} (Start of Video)")
+                        contents.append(Image.open(start_jpg))
+                    if os.path.exists(end_jpg):
+                        contents.append(f"Image for Scene ID: {sid} (End of Video)")
+                        contents.append(Image.open(end_jpg))
+                else:
+                    img = Image.open(img_path)
+                    contents.append(f"Image for Scene ID: {sid}")
+                    contents.append(img)
             except Exception as e:
-                print(f"  \u26A0\uFE0F Failed to load image {img_path}: {e}")
+                print(f"  \u26A0\uFE0F Failed to load asset {img_path}: {e}")
         else:
-            print(f"  \u26A0\uFE0F Missing image for Scene ID: {sid}")
+            print(f"  \u26A0\uFE0F Missing asset for Scene ID: {sid}")
             
     contents.insert(0, prompt_text)
     
@@ -128,6 +142,7 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
         for f in glob.glob(os.path.join(str(proj), "temp_*_*.jpg")):
             try: os.remove(f)
             except: pass
+
 
         # Merge results back into original blueprint
         vision_map = {s["scene_id"]: s for s in vision_scenes}
