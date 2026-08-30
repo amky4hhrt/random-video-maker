@@ -175,8 +175,8 @@ def find_asset(input_dir, base_name, extensions):
     return None
 
 # ─── Audio Ducking & Bed ──────────────────────────────────────────
-BGM_BASE_MULTIPLIER  = 0.50
-BGM_DUCK_MULTIPLIER  = 0.12
+BGM_BASE_MULTIPLIER  = 1.0
+BGM_DUCK_MULTIPLIER  = 0.35
 VOLUME_RAMP_SECONDS  = 1.2
 
 def build_volume_breakpoints(music_data: dict, active_end: float) -> list:
@@ -257,8 +257,31 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
     m_placements = []
     tracks = music_bp.get("music_tracks", [])
     for i, mt in enumerate(tracks):
-        m_id = mt.get("music_id", "")
-        m_path = find_asset(music_dir, m_id, AUDIO_EXTENSIONS)
+        bucket = mt.get("genre_bucket", mt.get("music_id", "ambient_neutral"))
+        bucket_dir = os.path.join(music_dir, bucket)
+        m_path = None
+        
+        if os.path.isdir(bucket_dir):
+            import glob, random
+            files = []
+            for ext in AUDIO_EXTENSIONS:
+                files.extend(glob.glob(os.path.join(bucket_dir, f"*{ext}")))
+            if files:
+                m_path = random.choice(files)
+                
+        if not m_path:
+            ambient_dir = os.path.join(music_dir, "ambient_neutral")
+            if os.path.isdir(ambient_dir):
+                import glob, random
+                files = []
+                for ext in AUDIO_EXTENSIONS:
+                    files.extend(glob.glob(os.path.join(ambient_dir, f"*{ext}")))
+                if files:
+                    m_path = random.choice(files)
+                    print(f"  \u26A0\uFE0F Warning: music/{bucket}/ is empty. Falling back to ambient_neutral.")
+                    
+        if not m_path:
+            print(f"  \u26A0\uFE0F Warning: music/{bucket}/ is empty and no fallback found! Skipping track.")
         
         start_t = mt.get("start_time", 0.0)
         
@@ -303,7 +326,7 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
     filter_complex = ""
     if has_bgm and has_sfx:
         filter_complex = (
-            f"[1:a]loudnorm=I=-22:LRA=7:TP=-2,volume=eval=frame:volume='{vol_expr}'[bgm_final]; "
+            f"[1:a]acompressor=threshold=-24dB:ratio=5:attack=5:release=50:makeup=4,loudnorm=I=-22:LRA=7:TP=-2,volume=eval=frame:volume='{vol_expr}'[bgm_final]; "
             "[2:a]aresample=44100[sfx_resampled]; "
             "[bgm_final][sfx_resampled]amix=inputs=2:duration=longest:normalize=0[music_bed]; "
             "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5[vo_norm]; "
@@ -311,7 +334,7 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
         )
     elif has_bgm:
         filter_complex = (
-            f"[1:a]loudnorm=I=-22:LRA=7:TP=-2,volume=eval=frame:volume='{vol_expr}'[bgm_final]; "
+            f"[1:a]acompressor=threshold=-24dB:ratio=5:attack=5:release=50:makeup=4,loudnorm=I=-22:LRA=7:TP=-2,volume=eval=frame:volume='{vol_expr}'[bgm_final]; "
             "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5[vo_norm]; "
             "[bgm_final][vo_norm]amix=inputs=2:duration=longest:weights=1 1,alimiter=limit=0.95[a_out]"
         )

@@ -475,10 +475,11 @@ def run_music_pass(story_text, transcript_data, output_path, sfx_lib_path):
     s_menu = "\\n".join(f"- {k}: {v}" for k, v in sfx_lib.items()) or "None"
     
     sys_inst = f"""You are an Elite Film Composer & Sound Designer. Score this video by breaking the narration into multiple emotional movements.
-1. INVENT completely new, unique `music_id`s for this video. Generate a highly descriptive `music_prompt` for each distinct emotional phase so the user can generate the track using an AI music tool. Do NOT reuse tracks.
-2. Use 'start_trigger_words' to precisely map exactly when a new music track should fade in and take over the score.
-3. Strategically place `duck_cues` to dynamically lower the volume of the music during intense dialogue or SFX moments.
-4. For SFX, use existing library IDs if appropriate, or invent new ones. Provide an 'sfx_description' that precisely describes the acoustic properties.
+1. Assign a strict `genre_bucket` from the allowed ENUM list for each distinct emotional phase of the video.
+2. Generate a highly descriptive `custom_music_prompt` for that phase. The user will use this prompt to generate actual audio files to fill their library later.
+3. Use 'start_trigger_words' (a list of 3-4 consecutive unique words from the script) to precisely map exactly when the new music track should fade in.
+4. Strategically place `duck_cues` to dynamically lower the volume of the music during intense dialogue or SFX moments.
+5. For SFX, use existing library IDs if appropriate, or invent new ones. Provide an 'sfx_description' that precisely describes the acoustic properties.
 EXISTING SFX: {s_menu}
 """
     schema = types.Schema(
@@ -487,11 +488,10 @@ EXISTING SFX: {s_menu}
             "music_tracks": types.Schema(
                 type=types.Type.ARRAY, items=types.Schema(
                     type=types.Type.OBJECT, properties={
-                        "music_id": types.Schema(type=types.Type.STRING),
-                        "music_prompt": types.Schema(type=types.Type.STRING),
-                        "emotion": types.Schema(type=types.Type.STRING),
+                        "genre_bucket": types.Schema(type=types.Type.STRING, enum=['suspense_creeping', 'suspense_intense', 'horror_dread', 'investigative_analytical', 'action_chase', 'epic_cinematic', 'sad_melancholic', 'hopeful_uplifting', 'peaceful_closure', 'romantic_tender', 'quirky_lighthearted', 'comedic_wacky', 'ambient_neutral', 'lofi_chill', 'synthwave_retro']),
+                        "custom_music_prompt": types.Schema(type=types.Type.STRING),
                         "start_trigger_words": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.STRING)),
-                    }, required=["music_id", "music_prompt", "emotion", "start_trigger_words"]
+                    }, required=["genre_bucket", "custom_music_prompt", "start_trigger_words"]
                 )
             ),
             "sfx_cues": types.Schema(
@@ -533,7 +533,7 @@ EXISTING SFX: {s_menu}
             mt["start_time"] = r["start_time"]
             resolved_tracks.append(mt)
         else:
-            print(f"      \u26A0\uFE0F Failed to match trigger words for music_id: {mt.get('music_id')} -> {mt.get('start_trigger_words')}")
+            print(f"      \u26A0\uFE0F Failed to match trigger words for genre_bucket: {mt.get('genre_bucket')} -> {mt.get('start_trigger_words')}")
                 
     resolved_sfx = []
     last_idx = -1
