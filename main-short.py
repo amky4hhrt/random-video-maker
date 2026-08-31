@@ -76,7 +76,7 @@ def main():
         en_final = ENG_OUT / "final_en_short.mp4"
         en_ok = True
         if not en_final.exists():
-            en_ok = render_short_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(ENG_ASSETS), str(SFX_DIR), language="en")
+            en_ok = render_short_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
             if not en_ok:
                 print("  \u274C English render FAILED \u2014 see errors above.")
             elif not en_final.exists():
@@ -113,7 +113,7 @@ def main():
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=True)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
-                    hin_ok = render_short_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(HIN_ASSETS), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    hin_ok = render_short_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
                     if not hin_ok:
                         print("  \u274C Hindi render FAILED \u2014 see errors above.")
                     elif not hin_final.exists():

@@ -76,7 +76,7 @@ def main():
         # Render English
         en_final = ENG_OUT / "final_en_long.mp4"
         if not en_final.exists():
-            render_long_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(ENG_ASSETS), str(SFX_DIR), language="en")
+            render_long_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
         else:
             print(f"  \u2705 English video already rendered ({en_final.name}). Skipping.")
         
@@ -104,7 +104,7 @@ def main():
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=False)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
-                    render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(HIN_ASSETS), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
         else:
             print("\nℹ️ No Hindi story.txt or voiceover found in hindi_long_assets. Skipping Hindi render.")
             
