@@ -408,7 +408,10 @@ def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
     for p in seg_files: cmd_xfade.extend(["-i", p])
 
     filter_parts = []
-    current_v = "[0:v]"
+    for i in range(len(seg_files)):
+        filter_parts.append(f"[{i}:v]fps=30[vfps{i}]")
+        
+    current_v = "[vfps0]"
     current_duration = seg_durations[0]
 
     for j in range(1, len(seg_files)):
@@ -418,7 +421,7 @@ def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
         
         offset = current_duration
         out_label = f"[v{j}]"
-        filter_parts.append(f"{current_v}[{j}:v]xfade=transition={trans_filter}:duration={trans_dur}:offset={offset}{out_label}")
+        filter_parts.append(f"{current_v}[vfps{j}]xfade=transition={trans_filter}:duration={trans_dur}:offset={offset}{out_label}")
         current_duration += seg_durations[j]
         current_v = out_label
 
