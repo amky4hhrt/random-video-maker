@@ -68,10 +68,17 @@ def main():
         print("\nPhase 2: Render (Images found in english_long_assets)")
         print("-" * 50)
         
-        from py_files.vision_editor import run_vision_pass
-        if not run_vision_pass(str(ENG_ASSETS)):
-            print("\u274C Vision Pass failed. Aborting Render.")
+        # from py_files.vision_editor import run_vision_pass
+        # if not run_vision_pass(str(ENG_ASSETS)):
+        #     print("❌ Vision Pass failed. Aborting Render.")
+        #     sys.exit(1)
+            
+        from py_files.manual_review import run_manual_review
+        bp_path = ENG_ASSETS / "video_blueprint.json"
+        if not run_manual_review(str(bp_path)):
+            print("❌ Manual Review failed. Aborting Render.")
             sys.exit(1)
+
         
         # Render English
         en_final = ENG_OUT / "final_en_long.mp4"
