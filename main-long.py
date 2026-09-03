@@ -1,10 +1,12 @@
 import os
 import sys
 import glob
+import json
 from pathlib import Path
 from py_files.transcriber import generate_transcript
 from py_files.ai_generator import generate_blueprints, generate_hindi_blueprints
 from py_files.renderer_long import render_long_video
+from py_files.manual_review import run_manual_review
 
 BASE_DIR = Path(__file__).resolve().parent
 ENG_ASSETS = BASE_DIR / "english_long_assets"
@@ -15,9 +17,10 @@ MUSIC_DIR = BASE_DIR / "music"
 SFX_DIR = BASE_DIR / "sfx"
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+VIDEO_EXTS = (".mp4", ".mov")
 
-def has_images(dir_path):
-    for ext in IMAGE_EXTS:
+def has_assets(dir_path):
+    for ext in IMAGE_EXTS + VIDEO_EXTS:
         if glob.glob(os.path.join(dir_path, f"*{ext}")):
             return True
     return False
@@ -30,92 +33,152 @@ def get_audio_file(dir_path):
 
 def main():
     print("=" * 50)
-    print("🎬 UNIFIED LONG-FORM VIDEO MAKER")
+    print("🖥️ UNIFIED LONG-FORM VIDEO MAKER")
     print("=" * 50)
     
-    bp_missing = not os.path.exists(os.path.join(str(ENG_ASSETS), "video_blueprint.json")) or not os.path.exists(os.path.join(str(ENG_ASSETS), "music_blueprint.json"))
-    if not has_images(ENG_ASSETS) or bp_missing:
-        print("\nPhase 1: Generation (Blueprints or Images missing)")
+    vid_bp = ENG_ASSETS / "video_blueprint.json"
+    mus_bp = ENG_ASSETS / "music_blueprint.json"
+    char_json = ENG_ASSETS / "character_prompts.json"
+    trans = ENG_ASSETS / "transcript.json"
+    
+    needs_blueprints = not (vid_bp.exists() and mus_bp.exists() and char_json.exists() and trans.exists())
+    
+    needs_manual_review = True
+    if vid_bp.exists():
+        with open(vid_bp, "r") as f:
+            try:
+                bp_data = json.load(f)
+                if bp_data.get("manual_review_completed"):
+                    needs_manual_review = False
+            except json.JSONDecodeError:
+                pass
+                
+    images_present = has_assets(str(ENG_ASSETS))
+    
+    if needs_blueprints:
+        print("
+STAGE 1: Generating Blueprints")
         print("-" * 50)
         
-        # 1. English Transcript
-        print("\n📝 Generating English Transcript...")
+        print("
+📝 Generating English Transcript...")
         audio_file = get_audio_file(str(ENG_ASSETS))
-        story_file = os.path.join(str(ENG_ASSETS), "story.txt")
-        out_json = os.path.join(str(ENG_ASSETS), "transcript.json")
-        if os.path.exists(out_json):
-            print("  \u2705 Transcript already exists. Skipping transcription.")
+        story_file = ENG_ASSETS / "story.txt"
+        
+        if not story_file.exists() or not audio_file:
+            print("❌ Cannot proceed: story.txt and voiceover.* are required in english_long_assets/")
+            sys.exit(1)
+            
+        if trans.exists():
+            print("  ✅ Transcript already exists.")
         else:
-            if not audio_file or not generate_transcript(audio_file, story_file, out_json, language="en"):
-                print("\u274C English transcription failed. Ensure story.txt and voiceover.* exist.")
+            if not generate_transcript(audio_file, str(story_file), str(trans), language="en"):
+                print("❌ English transcription failed.")
                 sys.exit(1)
-        # 2. English Blueprints
-        print("\n🧠 Generating English Blueprints...")
+                
+        print("
+🧠 Generating English Blueprints...")
         if not generate_blueprints(str(ENG_ASSETS), is_short=False):
             print("❌ Blueprint generation failed.")
             sys.exit(1)
             
-        print("\n✅ Phase 1 Complete!")
+        print("
+✅ STAGE 1 COMPLETE!")
         print("NEXT STEPS:")
-        print("1. Review english_long_assets/character_prompts.json and video_blueprint.json")
-        print("2. Generate 16:9 images using the Google Flow Auto-Prompter extension")
-        print("3. Save them in english_long_assets/ with scene IDs (e.g. 1.jpg, 2_image.jpg)")
-        print("4. Generate the unique music tracks from music_blueprint.json and save them in english_long_assets/")
-        print("5. Optional: Add required SFX files to the global sfx/ folder")
-        print("6. Optional: Place Hindi story.txt and voiceover.* in hindi_long_assets/")
-        print("7. Run this script again to Render!")
-    else:
-        print("\nPhase 2: Render (Images found in english_long_assets)")
+        print("1. Review character_prompts.json and video_blueprint.json")
+        print("2. Generate assets and save them in english_long_assets/ (e.g. 1.jpg)")
+        print("3. Generate the unique music tracks from music_blueprint.json")
+        print("4. Run this script again to proceed to Stage 2 (Manual Review)!")
+        
+    elif images_present and needs_manual_review:
+        print("
+STAGE 2: Manual Review")
+        print("-" * 50)
+        if not run_manual_review(str(vid_bp)):
+            print("❌ Manual Review failed or was aborted.")
+            sys.exit(1)
+            
+        print("
+✅ STAGE 2 COMPLETE! Proceeding to Stage 3 immediately...")
+        needs_manual_review = False
+
+    if images_present and not needs_manual_review:
+        print("
+STAGE 3: Render (Images and Manual Review Confirmed)")
         print("-" * 50)
         
-        # from py_files.vision_editor import run_vision_pass
-        # if not run_vision_pass(str(ENG_ASSETS)):
-        #     print("❌ Vision Pass failed. Aborting Render.")
-        #     sys.exit(1)
-            
-        from py_files.manual_review import run_manual_review
-        bp_path = ENG_ASSETS / "video_blueprint.json"
-        if not run_manual_review(str(bp_path)):
-            print("❌ Manual Review failed. Aborting Render.")
-            sys.exit(1)
-
-        
-        # Render English
         en_final = ENG_OUT / "final_en_long.mp4"
+        en_ok = True
         if not en_final.exists():
-            render_long_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
+            en_ok = render_long_video(str(ENG_ASSETS), str(ENG_ASSETS), str(ENG_OUT), str(MUSIC_DIR), str(SFX_DIR), language="en")
+            if not en_ok:
+                print("  ❌ English render FAILED — see errors above.")
+            elif not en_final.exists():
+                print(f"  ❌ English render reported success but {en_final} is missing!")
+                en_ok = False
+            else:
+                print(f"  ✅ English render confirmed on disk: {en_final}")
         else:
-            print(f"  \u2705 English video already rendered ({en_final.name}). Skipping.")
+            print(f"  ✅ English video already rendered ({en_final.name}). Skipping.")
         
-        # Check if Hindi is ready
         hin_story = HIN_ASSETS / "story.txt"
         hin_vo = glob.glob(str(HIN_ASSETS / "voiceover.*"))
         
         if hin_story.exists() and hin_vo:
-            print("\n\U0001F1EE\U0001F1F3 Hindi assets detected! Preparing Hindi render...")
+            print("
+🇮🇳 Hindi assets detected! Preparing Hindi render...")
             
             hin_final = HIN_OUT / "final_hi_long.mp4"
+            hin_ok = True
             if hin_final.exists():
-                print(f"  \u2705 Hindi video already rendered ({hin_final.name}). Skipping.")
+                print(f"  ✅ Hindi video already rendered ({hin_final.name}). Skipping.")
             else:
                 hin_transcript = HIN_ASSETS / "transcript.json"
                 if not hin_transcript.exists():
-                    print("\n\U0001F4DD Generating Hindi Transcript...")
+                    print("
+📝 Generating Hindi Transcript...")
                     hin_audio = get_audio_file(str(HIN_ASSETS))
                     if not hin_audio or not generate_transcript(hin_audio, str(hin_story), str(hin_transcript), language="hi"):
-                        print("\u274C Hindi transcription failed.")
+                        print("❌ Hindi transcription failed.")
+                        hin_ok = False
                 
                 hin_vid_bp = HIN_ASSETS / "video_blueprint.json"
                 if hin_transcript.exists() and not hin_vid_bp.exists():
-                    print("\n\U0001F9E0 Generating Hindi Video Blueprint (Adapting from English)...")
+                    print("
+🧠 Generating Hindi Video Blueprint (Adapting from English)...")
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=False)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
-                    render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    hin_ok = render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    if not hin_ok:
+                        print("  ❌ Hindi render FAILED — see errors above.")
+                    elif not hin_final.exists():
+                        print(f"  ❌ Hindi render reported success but {hin_final} is missing!")
+                        hin_ok = False
+                    else:
+                        print(f"  ✅ Hindi render confirmed on disk: {hin_final}")
+                elif not (hin_transcript.exists() and hin_vid_bp.exists()):
+                    print("  ❌ Hindi render skipped — transcript or blueprint missing.")
+                    hin_ok = False
         else:
-            print("\nℹ️ No Hindi story.txt or voiceover found in hindi_long_assets. Skipping Hindi render.")
-            
-        print("\n✅ All Renders Complete!")
+            hin_ok = True
+            print("
+ℹ️ No Hindi story.txt or voiceover found. Skipping Hindi render.")
+
+        if en_ok and hin_ok:
+            print("
+✅ All Renders Complete!")
+        else:
+            print("
+❌ One or more renders FAILED — scroll up for the specific error.")
+            sys.exit(1)
+
+    elif not images_present and not needs_blueprints:
+        print("
+⏸️ WAITING FOR ASSETS")
+        print("-" * 50)
+        print("Blueprints are generated, but no images/videos were found.")
+        print("Please generate your images/videos and place them in the folder, then run this script again.")
 
 if __name__ == "__main__":
     main()
