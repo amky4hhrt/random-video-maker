@@ -56,12 +56,10 @@ def main():
     images_present = has_assets(str(ENG_ASSETS))
     
     if needs_blueprints:
-        print("
-STAGE 1: Generating Blueprints")
+        print("\nSTAGE 1: Generating Blueprints")
         print("-" * 50)
         
-        print("
-📝 Generating English Transcript...")
+        print("\n📝 Generating English Transcript...")
         audio_file = get_audio_file(str(ENG_ASSETS))
         story_file = ENG_ASSETS / "story.txt"
         
@@ -76,14 +74,12 @@ STAGE 1: Generating Blueprints")
                 print("❌ English transcription failed.")
                 sys.exit(1)
                 
-        print("
-🧠 Generating English Blueprints...")
+        print("\n🧠 Generating English Blueprints...")
         if not generate_blueprints(str(ENG_ASSETS), is_short=False):
             print("❌ Blueprint generation failed.")
             sys.exit(1)
             
-        print("
-✅ STAGE 1 COMPLETE!")
+        print("\n✅ STAGE 1 COMPLETE!")
         print("NEXT STEPS:")
         print("1. Review character_prompts.json and video_blueprint.json")
         print("2. Generate assets and save them in english_long_assets/ (e.g. 1.jpg)")
@@ -91,20 +87,17 @@ STAGE 1: Generating Blueprints")
         print("4. Run this script again to proceed to Stage 2 (Manual Review)!")
         
     elif images_present and needs_manual_review:
-        print("
-STAGE 2: Manual Review")
+        print("\nSTAGE 2: Manual Review")
         print("-" * 50)
         if not run_manual_review(str(vid_bp)):
             print("❌ Manual Review failed or was aborted.")
             sys.exit(1)
             
-        print("
-✅ STAGE 2 COMPLETE! Proceeding to Stage 3 immediately...")
+        print("\n✅ STAGE 2 COMPLETE! Proceeding to Stage 3 immediately...")
         needs_manual_review = False
 
     if images_present and not needs_manual_review:
-        print("
-STAGE 3: Render (Images and Manual Review Confirmed)")
+        print("\nSTAGE 3: Render (Images and Manual Review Confirmed)")
         print("-" * 50)
         
         en_final = ENG_OUT / "final_en_long.mp4"
@@ -125,8 +118,7 @@ STAGE 3: Render (Images and Manual Review Confirmed)")
         hin_vo = glob.glob(str(HIN_ASSETS / "voiceover.*"))
         
         if hin_story.exists() and hin_vo:
-            print("
-🇮🇳 Hindi assets detected! Preparing Hindi render...")
+            print("\n🇮🇳 Hindi assets detected! Preparing Hindi render...")
             
             hin_final = HIN_OUT / "final_hi_long.mp4"
             hin_ok = True
@@ -135,8 +127,7 @@ STAGE 3: Render (Images and Manual Review Confirmed)")
             else:
                 hin_transcript = HIN_ASSETS / "transcript.json"
                 if not hin_transcript.exists():
-                    print("
-📝 Generating Hindi Transcript...")
+                    print("\n📝 Generating Hindi Transcript...")
                     hin_audio = get_audio_file(str(HIN_ASSETS))
                     if not hin_audio or not generate_transcript(hin_audio, str(hin_story), str(hin_transcript), language="hi"):
                         print("❌ Hindi transcription failed.")
@@ -144,8 +135,7 @@ STAGE 3: Render (Images and Manual Review Confirmed)")
                 
                 hin_vid_bp = HIN_ASSETS / "video_blueprint.json"
                 if hin_transcript.exists() and not hin_vid_bp.exists():
-                    print("
-🧠 Generating Hindi Video Blueprint (Adapting from English)...")
+                    print("\n🧠 Generating Hindi Video Blueprint (Adapting from English)...")
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=False)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
@@ -162,20 +152,16 @@ STAGE 3: Render (Images and Manual Review Confirmed)")
                     hin_ok = False
         else:
             hin_ok = True
-            print("
-ℹ️ No Hindi story.txt or voiceover found. Skipping Hindi render.")
+            print("\nℹ️ No Hindi story.txt or voiceover found. Skipping Hindi render.")
 
         if en_ok and hin_ok:
-            print("
-✅ All Renders Complete!")
+            print("\n✅ All Renders Complete!")
         else:
-            print("
-❌ One or more renders FAILED — scroll up for the specific error.")
+            print("\n❌ One or more renders FAILED — scroll up for the specific error.")
             sys.exit(1)
 
     elif not images_present and not needs_blueprints:
-        print("
-⏸️ WAITING FOR ASSETS")
+        print("\n⏸️ WAITING FOR ASSETS")
         print("-" * 50)
         print("Blueprints are generated, but no images/videos were found.")
         print("Please generate your images/videos and place them in the folder, then run this script again.")
