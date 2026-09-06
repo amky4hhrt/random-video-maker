@@ -310,7 +310,7 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, is_sh
         for l in char_data.get("locations", []) for v in l.get("variants", [])
     ) or "(none)"
     
-    pacing_rule = "5-7 SECOND TARGET. Pacing should yield exactly 10 scenes per minute."
+    pacing_rule = "ACTION-DRIVEN PACING. Create a new scene ONLY when there is a distinct new physical action, a character enters/exits, or a major emotion shifts. Do NOT force scenes just to fill time! A single scene can last 15+ seconds if a character is just talking. If nothing visually new is happening in the narrative, KEEP THE SAME SCENE going."
     if is_short:
         pacing_rule = "FAST-PACED VERTICAL (9:16) 1-2 SECOND TARGET. Frame for vertical orientation."
     
