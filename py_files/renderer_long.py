@@ -4,6 +4,17 @@ import subprocess
 import shutil
 import time
 
+from py_files.captions import generate_subtitle_file, generate_subtitle_images
+
+CAPTION_FONTS = {
+    "en": "Montserrat Black",
+    "hi": "NotoSansDevanagari-Black",
+}
+
+def _escape_ffmpeg_path(path: str) -> str:
+    escaped = path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "'\\''")
+    return f"'{escaped}'"
+
 CPU_THREADS = 2
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff")
 VIDEO_EXTENSIONS = (".mp4", ".mov", ".mkv", ".webm")
@@ -432,12 +443,12 @@ def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
 
 
 # ─── Main Render Function ─────────────────────────────────────────
-def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, language="en", image_dir=None):
-    print(f"\n\U0001F4F9 Starting Long-Form Render for {language.upper()}")
+def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, language="en", image_dir=None, burn_captions=True):
+    print(f"\n📹 Starting Long-Form Render for {language.upper()}")
     
     vo_path = find_asset(audio_dir, "voiceover", AUDIO_EXTENSIONS)
     if not vo_path:
-        print("  \u274C Missing voiceover!")
+        print("  ❌ Missing voiceover!")
         return False
         
     with open(os.path.join(audio_dir, "transcript.json")) as f: transcript = json.load(f)
@@ -449,6 +460,20 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
     temp_dir = f"/tmp/temp_render_long_{language}"
     os.makedirs(temp_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
+
+    ass_path = None
+    if burn_captions:
+        try:
+            font_name = CAPTION_FONTS.get(language, "Montserrat Black")
+            if language == "hi":
+                ass_path = os.path.join(visual_dir, f"captions_{language}.txt")
+                generate_subtitle_images(transcript, vid_bp, visual_dir, language, is_short=False, font_name="NotoSansDevanagari-Black", use_karaoke=True)
+            else:
+                ass_path = os.path.join(visual_dir, f"captions_{language}.ass")
+                generate_subtitle_file(transcript, vid_bp, ass_path, is_short=False, font_name=font_name, use_karaoke=True)
+        except Exception as e:
+            print(f"  ⚠️ Caption generation failed, continuing without captions: {e}")
+            ass_path = None
     
     # 1. Audio Mix
     cmd_dur = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", vo_path]
@@ -588,14 +613,30 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
         else:
             print("  \u26A0\uFE0F Padding failed, continuing with the shorter (un-padded) video.")
 
-    # 4. Final mux with audio
+    # 4. Final mux with audio (+ burn in captions, if generated)
     final_out = os.path.join(output_dir, f"final_{language}_long.mp4")
-    mux_ok = run_ffmpeg(["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-shortest", final_out], "Final Mux")
+    
+    if ass_path and os.path.exists(ass_path):
+        if ass_path.endswith(".txt"):
+            cmd_final = (
+                ["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-f", "concat", "-safe", "0", "-i", ass_path, "-filter_complex", "[0:v][2:v]overlay=0:0"]
+                + _video_encode_args("fast") + ["-c:a", "aac", "-b:a", "192k", "-shortest", final_out]
+            )
+        else:
+            ass_escaped = _escape_ffmpeg_path(ass_path)
+            cmd_final = (
+                ["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-vf", f"ass={ass_escaped}"]
+                + _video_encode_args("fast") + ["-c:a", "aac", "-b:a", "192k", "-shortest", final_out]
+            )
+    else:
+        cmd_final = ["ffmpeg", "-y", "-i", stitched, "-i", final_audio, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", final_out]
+        
+    mux_ok = run_ffmpeg(cmd_final, "Final Mux")
 
     if not mux_ok or not os.path.exists(final_out) or os.path.getsize(final_out) == 0:
-        print(f"  \u274C Final render FAILED \u2014 {final_out} was not produced.")
+        print(f"  ❌ Final render FAILED — {final_out} was not produced.")
         return False
 
     shutil.rmtree(temp_dir, ignore_errors=True)
-    print(f"  \u2705 Render complete! Saved to {final_out}")
+    print(f"  ✅ Render complete! Saved to {final_out}")
     return True
