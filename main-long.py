@@ -139,7 +139,7 @@ def main():
                     generate_hindi_blueprints(str(ENG_ASSETS), str(HIN_ASSETS), is_short=False)
                     
                 if hin_transcript.exists() and hin_vid_bp.exists():
-                    hin_ok = render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS))
+                    hin_ok = render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", image_dir=str(ENG_ASSETS), burn_captions=False)
                     if not hin_ok:
                         print("  ❌ Hindi render FAILED — see errors above.")
                     elif not hin_final.exists():
