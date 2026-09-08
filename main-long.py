@@ -87,11 +87,20 @@ def main():
         print("4. Run this script again to proceed to Stage 2 (Manual Review)!")
         
     elif images_present and needs_manual_review:
-        print("\nSTAGE 2: Manual Review")
+        print("\nSTAGE 2: Assign Effects & Transitions")
         print("-" * 50)
-        if not run_manual_review(str(vid_bp)):
-            print("❌ Manual Review failed or was aborted.")
-            sys.exit(1)
+        
+        choice = input("Do you want AI to decide effects (A) or do it Manually (M)? [A/M]: ").strip().upper()
+        
+        if choice == 'A':
+            from py_files.vision_editor import run_vision_pass
+            if not run_vision_pass(str(ENG_ASSETS)):
+                print("❌ AI Vision Pass failed or was aborted.")
+                sys.exit(1)
+        else:
+            if not run_manual_review(str(vid_bp)):
+                print("❌ Manual Review failed or was aborted.")
+                sys.exit(1)
             
         print("\n✅ STAGE 2 COMPLETE! Proceeding to Stage 3 immediately...")
         needs_manual_review = False

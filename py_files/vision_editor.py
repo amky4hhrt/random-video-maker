@@ -169,6 +169,9 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
         else:
             vid_bp["scenes"] = scenes
             
+        # Set completion flag so Stage 3 knows it's safe to render
+        vid_bp["manual_review_completed"] = True
+            
         with open(vid_bp_path, "w", encoding="utf-8") as f:
             json.dump(vid_bp, f, indent=4)
             
