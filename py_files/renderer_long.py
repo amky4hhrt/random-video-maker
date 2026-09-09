@@ -5,6 +5,7 @@ import shutil
 import time
 
 from py_files.captions import generate_subtitle_file, generate_subtitle_images
+from py_files.audio_effects import apply_cinematic_reverb
 
 CAPTION_FONTS = {
     "en": "Montserrat Black",
@@ -311,6 +312,14 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
         if s_path: s_placements.append((s_path, st.get("start_time", 0.0)))
         
     temp_dir = os.path.dirname(output_audio)
+    
+    # ── Cinematic Reverb ──
+    vo_reverb_path = os.path.join(temp_dir, "vo_reverb.mp3")
+    if apply_cinematic_reverb(vo_path, vo_reverb_path):
+        vo_path = vo_reverb_path
+    else:
+        print("  ⚠️ Warning: Reverb application failed, falling back to dry voiceover.")
+    
     bgm_path = os.path.join(temp_dir, "bgm_bed.wav")
     sfx_path = os.path.join(temp_dir, "sfx_bed.wav")
     
