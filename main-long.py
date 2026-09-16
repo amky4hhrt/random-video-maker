@@ -83,7 +83,7 @@ def main():
         print("NEXT STEPS:")
         print("1. Review character_prompts.json and video_blueprint.json")
         print("2. Generate assets and save them in english_long_assets/ (e.g. 1.jpg)")
-        print("3. Generate the unique music tracks from music_blueprint.json")
+        print("3. Generate a single music track using the prompt in music_blueprint.json and save it in english_long_assets/")
         print("4. Run this script again to proceed to Stage 2 (Manual Review)!")
         
     elif images_present and needs_manual_review:

@@ -465,113 +465,46 @@ def _resolve_triggers(trigger_words, words, search_after_index=-1):
     return None
 
 def run_music_pass(story_text, transcript_data, output_path, sfx_lib_path):
-    print("  \U0001F3B5 Running Music & SFX Pass...")
-    client = get_gemini_client()
-        
-    sfx_lib = {}
-    if os.path.exists(sfx_lib_path):
-        with open(sfx_lib_path, "r") as f: sfx_lib = json.load(f)
-        
-    s_menu = "\\n".join(f"- {k}: {v}" for k, v in sfx_lib.items()) or "None"
+    print("  🎵 Running Music Pass (Single Track)...")
+    from google.genai import types
+    client = get_gemini_client() if AI_PROVIDER == "gemini" else None
     
-    sys_inst = f"""You are an Elite Film Composer & Sound Designer. Score this video by breaking the narration into multiple emotional movements.
-1. Assign a strict `genre_bucket` from the allowed ENUM list for each distinct emotional phase of the video.
-2. Generate a highly descriptive `custom_music_prompt` for that phase. The user will use this prompt to generate actual audio files to fill their library later.
-3. Use 'start_trigger_words' (a list of 3-4 consecutive unique words from the script) to precisely map exactly when the new music track should fade in.
-4. Strategically place `duck_cues` to dynamically lower the volume of the music during intense dialogue or SFX moments.
-5. For SFX, use existing library IDs if appropriate, or invent new ones. Provide an 'sfx_description' that precisely describes the acoustic properties.
-EXISTING SFX: {s_menu}
-"""
+    sys_inst = """You are an Elite Film Composer. 
+Analyze the overall emotional arc of this story.
+Generate a single, highly descriptive `overall_music_prompt` for the entire video.
+The prompt should describe the instruments, tempo, and mood. The user will use this prompt to generate the background music track."""
+
     schema = types.Schema(
         type=types.Type.OBJECT,
         properties={
-            "music_tracks": types.Schema(
-                type=types.Type.ARRAY, items=types.Schema(
-                    type=types.Type.OBJECT, properties={
-                        "genre_bucket": types.Schema(type=types.Type.STRING, enum=['suspense_creeping', 'suspense_intense', 'horror_dread', 'investigative_analytical', 'action_chase', 'epic_cinematic', 'sad_melancholic', 'hopeful_uplifting', 'peaceful_closure', 'romantic_tender', 'quirky_lighthearted', 'comedic_wacky', 'ambient_neutral', 'lofi_chill', 'synthwave_retro']),
-                        "custom_music_prompt": types.Schema(type=types.Type.STRING),
-                        "start_trigger_words": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.STRING)),
-                    }, required=["genre_bucket", "custom_music_prompt", "start_trigger_words"]
-                )
-            ),
-            "sfx_cues": types.Schema(
-                type=types.Type.ARRAY, items=types.Schema(
-                    type=types.Type.OBJECT, properties={
-                        "sfx_id": types.Schema(type=types.Type.STRING),
-                        "trigger_words": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.STRING)),
-                        "reason": types.Schema(type=types.Type.STRING),
-                        "sfx_description": types.Schema(type=types.Type.STRING),
-                    }, required=["sfx_id", "trigger_words", "reason", "sfx_description"]
-                )
-            ),
-            "duck_cues": types.Schema(
-                type=types.Type.ARRAY, items=types.Schema(
-                    type=types.Type.OBJECT, properties={
-                        "cue_id": types.Schema(type=types.Type.INTEGER),
-                        "trigger_words": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.STRING)),
-                        "volume_direction": types.Schema(type=types.Type.STRING, enum=["increase", "decrease"]),
-                    }, required=["cue_id", "trigger_words", "volume_direction"]
-                )
-            ),
-        }, required=["music_tracks", "sfx_cues", "duck_cues"]
+            "overall_music_prompt": types.Schema(type=types.Type.STRING)
+        },
+        required=["overall_music_prompt"]
     )
     
-    # Music Pass ALWAYS uses Gemini for reliable structured output.
-    result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
-    
-    print("    -> AI Output generated. Resolving timestamps...")
-    # Resolve timestamps
-    words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
-    resolved_tracks = []
-    last_idx = -1
-    raw_tracks = result.get("music_tracks", [])
-    print(f"    -> AI returned {len(raw_tracks)} raw music tracks.")
-    for mt in raw_tracks:
-        r = _resolve_triggers(mt["start_trigger_words"], words, last_idx)
-        if r:
-            last_idx = r["word_index"]
-            mt["start_time"] = r["start_time"]
-            resolved_tracks.append(mt)
-        else:
-            print(f"      \u26A0\uFE0F Failed to match trigger words for genre_bucket: {mt.get('genre_bucket')} -> {mt.get('start_trigger_words')}")
-                
-    resolved_sfx = []
-    last_idx = -1
-    for sfx in result.get("sfx_cues", []):
-        r = _resolve_triggers(sfx["trigger_words"], words, last_idx)
-        if r:
-            last_idx = r["word_index"]
-            sfx["start_time"] = r["start_time"]
-            resolved_sfx.append(sfx)
-            if sfx["sfx_id"] not in sfx_lib:
-                sfx_lib[sfx["sfx_id"]] = sfx.get("sfx_description", sfx.get("reason", ""))
-        else:
-            print(f"      \u26A0\uFE0F Failed to match trigger words for SFX: {sfx.get('sfx_id')}")
-                
-    resolved_duck = []
-    last_idx = -1
-    for duck in result.get("duck_cues", []):
-        r = _resolve_triggers(duck["trigger_words"], words, last_idx)
-        if r:
-            last_idx = r["word_index"]
-            duck["start_time"] = r["start_time"]
-            resolved_duck.append(duck)
-        else:
-            print(f"      \u26A0\uFE0F Failed to match trigger words for duck cue.")
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.1-pro-preview",
+            contents=story_text,
+            config=types.GenerateContentConfig(
+                system_instruction=sys_inst,
+                response_mime_type="application/json",
+                response_schema=schema,
+                temperature=0.7
+            )
+        )
+        
+        import json
+        result = json.loads(response.text)
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=4)
             
-    final_blueprint = {
-        "music_tracks": resolved_tracks,
-        "sfx_cues": resolved_sfx,
-        "duck_cues": resolved_duck
-    }
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(final_blueprint, f, indent=4)
-        
-    with open(sfx_lib_path, "w", encoding="utf-8") as f:
-        json.dump(sfx_lib, f, indent=4)
-        
-    return final_blueprint
+        print("  ✅ Simplified Music Pass complete.")
+        return True
+    except Exception as e:
+        print(f"  ❌ Error in Music Pass: {e}")
+        return False
 
 def generate_blueprints(project_dir, is_short=False):
     """

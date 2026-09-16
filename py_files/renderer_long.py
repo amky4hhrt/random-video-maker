@@ -186,131 +186,9 @@ def find_asset(input_dir, base_name, extensions):
         if matches: return matches[0]
     return None
 
-# ─── Audio Ducking & Bed ──────────────────────────────────────────
-BGM_BASE_MULTIPLIER  = 0.72
-BGM_DUCK_MULTIPLIER  = 0.24
-VOLUME_RAMP_SECONDS  = 1.2
 
-def build_volume_breakpoints(music_data: dict, active_end: float) -> list:
-    cues = sorted(music_data.get("duck_cues", []), key=lambda c: c.get("start_time", 0.0))
-    points = {0.0: BGM_BASE_MULTIPLIER}
-    for cue in cues:
-        t = cue.get("start_time")
-        if t is None or t >= active_end: continue
-        direction = cue.get("volume_direction")
-        if direction == "decrease": points[round(t, 3)] = BGM_DUCK_MULTIPLIER
-        elif direction == "increase": points[round(t, 3)] = BGM_BASE_MULTIPLIER
-    return sorted(points.items())
-
-def build_volume_expr(breakpoints: list, ramp_seconds: float, total_duration: float) -> str:
-    if not breakpoints: return f"{BGM_BASE_MULTIPLIER}"
-    if len(breakpoints) == 1: return f"{breakpoints[0][1]}"
-
-    t0, v0 = breakpoints[0]
-    intervals = []
-    prev_ramp_end, prev_level = t0, v0
-
-    for t, v in breakpoints[1:]:
-        if t > prev_ramp_end:
-            intervals.append((t, f"{prev_level}"))
-        ramp_end = min(t + ramp_seconds, total_duration)
-        if ramp_end > t:
-            span = max(ramp_end - t, 0.001)
-            intervals.append((ramp_end, f"({prev_level}+({v}-{prev_level})*(t-{t})/{span})"))
-        prev_ramp_end, prev_level = ramp_end, v
-
-    intervals.append((None, f"{prev_level}"))
-    
-    expr = intervals[-1][1]
-    for upper_bound, this_expr in reversed(intervals[:-1]):
-        expr = f"if(lt(t,{upper_bound}),{this_expr},{expr})"
-    return expr
-
-def build_music_bed(music_placements, total_duration, output_path):
-    if not music_placements: return False
-    cmd = ["ffmpeg", "-y", "-threads", str(CPU_THREADS)]
-    for path, _, _ in music_placements: cmd.extend(["-i", path])
-    n = len(music_placements)
-    filter_parts = []
-    for i, (_, start_time, end_time) in enumerate(music_placements):
-        delay_ms = max(0, int(start_time * 1000))
-        play_dur = max(0.1, end_time - start_time)
-        fade_out = max(0.0, play_dur - 2.0)
-        filters = f"[{i}:a]atrim=0:{play_dur}"
-        if start_time > 0.5: filters += f",afade=t=in:st=0:d=2"
-        filters += f",afade=t=out:st={fade_out}:d=2,adelay={delay_ms}|{delay_ms}[m{i}]"
-        filter_parts.append(filters)
-    if n == 1: filter_parts.append("[m0]anull[music_out]")
-    else:
-        mix = "".join(f"[m{i}]" for i in range(n))
-        filter_parts.append(f"{mix}amix=inputs={n}:duration=longest:normalize=0[music_out]")
-    
-    cmd.extend(["-filter_complex", ";".join(filter_parts), "-map", "[music_out]", "-t", str(total_duration), "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le", output_path])
-    return run_ffmpeg(cmd, "Music bed assembly")
-
-def build_sfx_bed(sfx_placements, total_duration, output_path):
-    if not sfx_placements: return False
-    cmd = ["ffmpeg", "-y", "-threads", str(CPU_THREADS)]
-    for path, _ in sfx_placements: cmd.extend(["-i", path])
-    n = len(sfx_placements)
-    filter_parts = []
-    for i, (_, start_time) in enumerate(sfx_placements):
-        delay_ms = max(0, int(start_time * 1000))
-        filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[s{i}]")
-    if n == 1: filter_parts.append("[s0]volume=0.55[sfx_out]")
-    else:
-        mix = "".join(f"[s{i}]" for i in range(n))
-        filter_parts.append(f"{mix}amix=inputs={n}:duration=longest:normalize=0,volume=0.55[sfx_out]")
-    
-    cmd.extend(["-filter_complex", ";".join(filter_parts), "-map", "[sfx_out]", "-t", str(total_duration), "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le", output_path])
-    return run_ffmpeg(cmd, "SFX bed assembly")
-
+# ─── Final Audio Mix ──────────────────────────────────────────────
 def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_audio, total_duration):
-    m_placements = []
-    tracks = music_bp.get("music_tracks", [])
-    for i, mt in enumerate(tracks):
-        bucket = mt.get("genre_bucket", mt.get("music_id", "ambient_neutral"))
-        bucket_dir = os.path.join(music_dir, bucket)
-        m_path = None
-        
-        if os.path.isdir(bucket_dir):
-            import glob, random
-            files = []
-            for ext in AUDIO_EXTENSIONS:
-                files.extend(glob.glob(os.path.join(bucket_dir, f"*{ext}")))
-            if files:
-                m_path = random.choice(files)
-                
-        if not m_path:
-            ambient_dir = os.path.join(music_dir, "ambient_neutral")
-            if os.path.isdir(ambient_dir):
-                import glob, random
-                files = []
-                for ext in AUDIO_EXTENSIONS:
-                    files.extend(glob.glob(os.path.join(ambient_dir, f"*{ext}")))
-                if files:
-                    m_path = random.choice(files)
-                    print(f"  \u26A0\uFE0F Warning: music/{bucket}/ is empty. Falling back to ambient_neutral.")
-                    
-        if not m_path:
-            print(f"  \u26A0\uFE0F Warning: music/{bucket}/ is empty and no fallback found! Skipping track.")
-        
-        start_t = mt.get("start_time", 0.0)
-        
-        if i + 1 < len(tracks):
-            next_start = tracks[i+1].get("start_time", total_duration)
-            end_t = min(total_duration, next_start + 2.0) # 2s overlap for crossfade
-        else:
-            end_t = total_duration
-            
-        if m_path: m_placements.append((m_path, start_t, end_t))
-        
-    s_placements = []
-    for st in music_bp.get("sfx_cues", []):
-        s_id = st.get("sfx_id", "")
-        s_path = find_asset(sfx_dir, s_id, AUDIO_EXTENSIONS)
-        if s_path: s_placements.append((s_path, st.get("start_time", 0.0)))
-        
     temp_dir = os.path.dirname(output_audio)
     
     # ── Cinematic Reverb ──
@@ -320,55 +198,48 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
     else:
         print("  ⚠️ Warning: Reverb application failed, falling back to dry voiceover.")
     
-    bgm_path = os.path.join(temp_dir, "bgm_bed.wav")
-    sfx_path = os.path.join(temp_dir, "sfx_bed.wav")
-    
-    has_bgm = build_music_bed(m_placements, total_duration, bgm_path)
-    has_sfx = build_sfx_bed(s_placements, total_duration, sfx_path)
-    
-    breakpoints = build_volume_breakpoints(music_bp, total_duration)
-    vol_expr = build_volume_expr(breakpoints, VOLUME_RAMP_SECONDS, total_duration)
-    
-    cmd = ["ffmpeg", "-y", "-threads", str(CPU_THREADS), "-i", vo_path]
-    inputs = 1
-    if has_bgm:
-        cmd.extend(["-i", bgm_path])
-        inputs += 1
-    if has_sfx:
-        cmd.extend(["-i", sfx_path])
-        inputs += 1
+    # Find Custom Music
+    import glob
+    AUDIO_EXTENSIONS = ('.mp3', '.wav', '.m4a', '.flac')
+    custom_music_path = None
+    for ext in AUDIO_EXTENSIONS:
+        for f in glob.glob(os.path.join(audio_dir, f"*{ext}")):
+            name = os.path.basename(f).lower()
+            if "voiceover" not in name and "temp" not in name and "final" not in name:
+                custom_music_path = f
+                break
+        if custom_music_path: break
         
-    if inputs == 1:
-        cmd.extend(["-filter_complex", "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,alimiter=limit=0.95[a_out]", "-map", "[a_out]", "-c:a", "libmp3lame", "-b:a", "192k", output_audio])
-        run_ffmpeg(cmd, "Final Audio Mix")
+    cmd = ["ffmpeg", "-y", "-threads", str(CPU_THREADS)]
+    
+    if not custom_music_path:
+        print("  ⚠️ No custom background music found. Rendering voiceover only.")
+        cmd.extend(["-i", vo_path, "-filter_complex", "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,alimiter=limit=0.95[a_out]", "-map", "[a_out]", "-c:a", "libmp3lame", "-b:a", "192k", output_audio])
+        run_ffmpeg(cmd, "Final Audio Mix (VO Only)")
         return
+        
+    print(f"  🎵 Mixing with Custom Background Music: {os.path.basename(custom_music_path)}")
+    cmd.extend(["-i", vo_path, "-stream_loop", "-1", "-i", custom_music_path])
+    
+    # True Sidechain Compression
+    # [1:a] - music, [0:a] - voiceover
+    # Sidechain dynamically ducks the music when voiceover triggers it
+    filter_complex = (
+        "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,asplit[vo_norm][vo_sc]; "
+        "[1:a]aresample=44100,volume=0.7[bgm_resampled]; "
+        "[bgm_resampled][vo_sc]sidechaincompress=threshold=-15dB:ratio=4:attack=50:release=300:makeup=2[bgm_ducked]; "
+        "[bgm_ducked][vo_norm]amix=inputs=2:duration=first:weights=1 1,alimiter=limit=0.95[a_out]"
+    )
+    
+    cmd.extend([
+        "-filter_complex", filter_complex,
+        "-map", "[a_out]",
+        "-c:a", "libmp3lame", "-b:a", "192k",
+        output_audio
+    ])
+    
+    run_ffmpeg(cmd, "Final Audio Mix (Sidechain Ducking)")
 
-    filter_complex = ""
-    if has_bgm and has_sfx:
-        filter_complex = (
-            f"[1:a]acompressor=threshold=-24dB:ratio=5:attack=5:release=50:makeup=4,loudnorm=I=-22:LRA=7:TP=-2,volume=eval=frame:volume='{vol_expr}'[bgm_final]; "
-            "[2:a]aresample=44100[sfx_resampled]; "
-            "[bgm_final][sfx_resampled]amix=inputs=2:duration=longest:normalize=0[music_bed]; "
-            "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5[vo_norm]; "
-            "[music_bed][vo_norm]amix=inputs=2:duration=longest:weights=1 1,alimiter=limit=0.95[a_out]"
-        )
-    elif has_bgm:
-        filter_complex = (
-            f"[1:a]acompressor=threshold=-24dB:ratio=5:attack=5:release=50:makeup=4,loudnorm=I=-22:LRA=7:TP=-2,volume=eval=frame:volume='{vol_expr}'[bgm_final]; "
-            "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5[vo_norm]; "
-            "[bgm_final][vo_norm]amix=inputs=2:duration=longest:weights=1 1,alimiter=limit=0.95[a_out]"
-        )
-    elif has_sfx:
-        filter_complex = (
-            "[1:a]aresample=44100[sfx_resampled]; "
-            "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5[vo_norm]; "
-            "[sfx_resampled][vo_norm]amix=inputs=2:duration=longest:weights=1 1,alimiter=limit=0.95[a_out]"
-        )
-
-    cmd.extend(["-filter_complex", filter_complex, "-map", "[a_out]", "-c:a", "libmp3lame", "-b:a", "192k", output_audio])
-    run_ffmpeg(cmd, "Final Audio Mix")
-
-# ─── Crossfade Stitcher ────────────────────────────────────────────
 def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
     """
     Two-phase stitcher:
