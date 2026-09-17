@@ -62,6 +62,7 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     # 1. Audio Mix
     cmd_dur = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", vo_path]
     dur = float(subprocess.run(cmd_dur, stdout=subprocess.PIPE, text=True).stdout.strip())
+    dur += 2.0  # Add 2 seconds to accommodate cinematic reverb tail and music outro
     
     final_audio = os.path.join(temp_dir, "final_audio.mp3")
     generate_audio_mix(audio_dir, vo_path, mus_bp, music_dir, sfx_dir, final_audio, dur)

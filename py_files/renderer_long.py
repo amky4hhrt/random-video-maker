@@ -201,20 +201,30 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
     # Find Custom Music
     import glob
     AUDIO_EXTENSIONS = ('.mp3', '.wav', '.m4a', '.flac')
-    custom_music_path = None
-    for ext in AUDIO_EXTENSIONS:
-        for f in glob.glob(os.path.join(audio_dir, f"*{ext}")):
-            name = os.path.basename(f).lower()
-            if "voiceover" not in name and "temp" not in name and "final" not in name:
-                custom_music_path = f
-                break
-        if custom_music_path: break
+    
+    def search_for_music(search_dir):
+        for ext in AUDIO_EXTENSIONS:
+            for f in glob.glob(os.path.join(search_dir, f"*{ext}")):
+                name = os.path.basename(f).lower()
+                if "voiceover" not in name and "temp" not in name and "final" not in name:
+                    return f
+        return None
+
+    custom_music_path = search_for_music(audio_dir)
+    
+    # Hindi Fallback Logic
+    if not custom_music_path and "hindi_" in audio_dir:
+        fallback_dir = audio_dir.replace("hindi_", "english_")
+        if os.path.exists(fallback_dir):
+            custom_music_path = search_for_music(fallback_dir)
+            if custom_music_path:
+                print(f"  🎵 Using fallback English music: {os.path.basename(custom_music_path)}")
         
     cmd = ["ffmpeg", "-y", "-threads", str(CPU_THREADS)]
     
     if not custom_music_path:
         print("  ⚠️ No custom background music found. Rendering voiceover only.")
-        cmd.extend(["-i", vo_path, "-filter_complex", "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,alimiter=limit=0.95[a_out]", "-map", "[a_out]", "-c:a", "libmp3lame", "-b:a", "192k", output_audio])
+        cmd.extend(["-i", vo_path, "-filter_complex", "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,alimiter=limit=0.95[a_out]", "-map", "[a_out]", "-t", str(total_duration), "-c:a", "libmp3lame", "-b:a", "192k", output_audio])
         run_ffmpeg(cmd, "Final Audio Mix (VO Only)")
         return
         
@@ -234,6 +244,7 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
     cmd.extend([
         "-filter_complex", filter_complex,
         "-map", "[a_out]",
+        "-t", str(total_duration),
         "-c:a", "libmp3lame", "-b:a", "192k",
         output_audio
     ])
@@ -358,6 +369,7 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
     # 1. Audio Mix
     cmd_dur = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", vo_path]
     dur = float(subprocess.run(cmd_dur, stdout=subprocess.PIPE, text=True).stdout.strip())
+    dur += 2.0  # Add 2 seconds to accommodate cinematic reverb tail and music outro
     
     final_audio = os.path.join(temp_dir, "final_audio.mp3")
     generate_audio_mix(audio_dir, vo_path, mus_bp, music_dir, sfx_dir, final_audio, dur)
