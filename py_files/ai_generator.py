@@ -467,7 +467,7 @@ def _resolve_triggers(trigger_words, words, search_after_index=-1):
 def run_music_pass(story_text, transcript_data, output_path, sfx_lib_path):
     print("  🎵 Running Music Pass (Single Track)...")
     from google.genai import types
-    client = get_gemini_client() if AI_PROVIDER == "gemini" else None
+    client = get_gemini_client()
     
     sys_inst = """You are an Elite Film Composer. 
 Analyze the overall emotional arc of this story.
@@ -483,20 +483,9 @@ The prompt should describe the instruments, tempo, and mood. The user will use t
     )
     
     try:
-        response = client.models.generate_content(
-            model="gemini-3.1-pro-preview",
-            contents=story_text,
-            config=types.GenerateContentConfig(
-                system_instruction=sys_inst,
-                response_mime_type="application/json",
-                response_schema=schema,
-                temperature=0.7
-            )
-        )
+        result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
         
         import json
-        result = json.loads(response.text)
-        
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=4)
             
