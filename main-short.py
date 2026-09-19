@@ -90,7 +90,31 @@ def main():
         print("\nSTAGE 2: Assign Effects & Transitions")
         print("-" * 50)
         
-        choice = input("Do you want AI to decide effects (A) or do it Manually (M)? [A/M]: ").strip().upper()
+        import threading
+        import _thread
+        
+        timeout_state = [False]
+        def timeout_handler():
+            timeout_state[0] = True
+            print("\n⏳ 15-second timeout reached! Defaulting to 'A' (AI Vision Pass).")
+            _thread.interrupt_main()
+            
+        choice = 'A'
+        timer = threading.Timer(15.0, timeout_handler)
+        timer.start()
+        
+        try:
+            user_input = input("Do you want AI to decide effects (A) or do it Manually (M)? [A/M] (15s timeout): ").strip().upper()
+            timer.cancel()
+            if user_input in ['A', 'M']:
+                choice = user_input
+        except EOFError:
+            timer.cancel()
+            # If running headlessly without input, default to A
+            pass
+        except KeyboardInterrupt:
+            if not timeout_state[0]:
+                raise
         
         if choice == 'A':
             from py_files.vision_editor import run_vision_pass
