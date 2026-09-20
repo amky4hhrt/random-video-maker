@@ -589,18 +589,26 @@ def run_hindi_director_pass(hin_story_text, hin_transcript_data, eng_vid_bp, out
     fmt_input = "\\n".join([f"[{idx}] {s['text']}" for idx, s in enumerate(sentences)])
     
     # 3. AI Instructions & Schema
+    # Extract explicitly valid IDs to embed in the prompt
+    valid_ids = [s.get('scene_id') for s in eng_scenes]
+    valid_ids_str = ", ".join(map(str, valid_ids))
+    
     sys_inst = f"""You are an Elite Executive Video Director adapting a Hindi video timeline using existing images from the English version.
 The English pipeline has already generated still images and camera movements for each scene. Your job is to RE-MAP those existing scenes onto the Hindi timeline by mapping the Hindi sentences to the correct english_source_scene_id.
 
 ENGLISH VIDEO BLUEPRINT (the source storyboard you are adapting):
 {blueprint_block}
 
+AVAILABLE ENGLISH IDS: [{valid_ids_str}]
+
 RULES:
 1. SEMANTIC MATCHING (CRITICAL): Read the Hindi Story provided below, which is broken down into numbered sentences (e.g., [0], [1], [2]). Identify the specific topics/events being spoken about. Find the 'english_source_scene_id' from the English Video Blueprint that best matches that topic.
 2. FAST PACING (CRITICAL): The English video uses rapid scene changes. You MUST use as many of the provided English scenes as possible to maintain this fast pacing. Do not group too many sentences together. Switch images frequently, typically every 1 or 2 sentences!
 3. OUTPUT: For each scene, output a sequentially increasing 'scene_id' (1, 2, 3...), the 'english_source_scene_id' you are linking to, and the index number of the first sentence ('start_index') and the index number of the last sentence ('end_index') that belong to that scene. Ensure every sentence from 0 to {len(sentences)-1} is covered!
-4. REUSE RULES: You may reuse the same english_source_scene_id later if the topic returns, but DO NOT use the same ID in consecutive scenes.
-5. NO INVENTED IDS (CRITICAL): You MUST ONLY use the exact integer 'english_source_scene_id' values provided in the English Video Blueprint. DO NOT invent new IDs.
+4. ASSET REUSE & LIMITS (CRITICAL): 
+   - You MUST ONLY use the IDs listed above in AVAILABLE ENGLISH IDS. Do not invent new IDs. Do not ask for new images.
+   - You MAY reuse an existing 'english_source_scene_id' if the story topic returns, BUT you MUST NOT use the same ID more than 3 times total in the entire blueprint.
+   - You MUST NOT use the same ID in consecutive, back-to-back scenes.
 """
     
     schema = types.Schema(
