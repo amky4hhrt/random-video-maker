@@ -230,7 +230,7 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
     # [1:a] - music, [0:a] - voiceover
     # Sidechain dynamically ducks the music when voiceover triggers it
     filter_complex = (
-        "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,asplit[vo_norm][vo_sc]; "
+        "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,apad,asplit[vo_norm][vo_sc]; "
         "[1:a]aresample=44100,volume=0.63[bgm_resampled]; "
         "[bgm_resampled][vo_sc]sidechaincompress=threshold=-15dB:ratio=4:attack=50:release=300:makeup=2[bgm_ducked]; "
         "[bgm_ducked][vo_norm]amix=inputs=2:duration=first:weights=1 1,alimiter=limit=0.95[a_out]"
