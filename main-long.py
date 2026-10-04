@@ -4,14 +4,12 @@ import glob
 import json
 from pathlib import Path
 from py_files.transcriber import generate_transcript
-from py_files.ai_generator import generate_blueprints, generate_hindi_blueprints
+from py_files.ai_generator import generate_blueprints
 from py_files.renderer_long import render_long_video
 from py_files.manual_review import run_manual_review
 
 BASE_DIR = Path(__file__).resolve().parent
-ENG_ASSETS = BASE_DIR / "english_long_assets"
 HIN_ASSETS = BASE_DIR / "hindi_long_assets"
-ENG_OUT = BASE_DIR / "output" / "english_long"
 HIN_OUT = BASE_DIR / "output" / "hindi_long"
 MUSIC_DIR = BASE_DIR / "music"
 SFX_DIR = BASE_DIR / "sfx"
@@ -31,6 +29,13 @@ def get_audio_file(dir_path):
         if files: return files[0]
     return None
 
+
+
+# ============================================================================
+# [LEGACY PIPELINE - COMMENTED OUT AS PER REQUEST]
+# This contains the original logic that rendered English first and reused assets.
+# ============================================================================
+'''
 def main():
     print("=" * 50)
     print("🖥️ UNIFIED LONG-FORM VIDEO MAKER")
@@ -201,3 +206,137 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''
+
+# ============================================================================
+# [NEW PIPELINE - HINDI FIRST & ONLY]
+# ============================================================================
+def main():
+    print("=" * 50)
+    print("🖥️ UNIFIED LONG-FORM VIDEO MAKER (HINDI ONLY)")
+    print("=" * 50)
+    
+    vid_bp = HIN_ASSETS / "video_blueprint.json"
+    mus_bp = HIN_ASSETS / "music_blueprint.json"
+    char_json = HIN_ASSETS / "character_prompts.json"
+    trans = HIN_ASSETS / "transcript.json"
+    
+    needs_blueprints = not (vid_bp.exists() and mus_bp.exists() and char_json.exists() and trans.exists())
+    
+    needs_manual_review = True
+    if vid_bp.exists():
+        with open(vid_bp, "r") as f:
+            try:
+                bp_data = json.load(f)
+                if bp_data.get("manual_review_completed"):
+                    needs_manual_review = False
+            except json.JSONDecodeError:
+                pass
+                
+    images_present = has_assets(str(HIN_ASSETS))
+    
+    if needs_blueprints:
+        print("\nSTAGE 1: Generating Blueprints")
+        print("-" * 50)
+        
+        print("\n📝 Generating Hindi Transcript...")
+        audio_file = get_audio_file(str(HIN_ASSETS))
+        story_file = HIN_ASSETS / "story.txt"
+        
+        if not story_file.exists() or not audio_file:
+            print("❌ Cannot proceed: story.txt and voiceover.* are required in hindi_long_assets/")
+            sys.exit(1)
+            
+        if trans.exists():
+            print("  ✅ Transcript already exists.")
+        else:
+            if not generate_transcript(audio_file, str(story_file), str(trans), language="hi"):
+                print("❌ Hindi transcription failed.")
+                sys.exit(1)
+                
+        print("\n🧠 Generating Hindi Blueprints...")
+        if not generate_blueprints(str(HIN_ASSETS), is_short=False):
+            print("❌ Blueprint generation failed.")
+            sys.exit(1)
+            
+        print("\n✅ STAGE 1 COMPLETE!")
+        print("NEXT STEPS:")
+        print("1. Review character_prompts.json and video_blueprint.json")
+        print("2. Generate assets and save them in hindi_long_assets/ (e.g. 1.jpg)")
+        print("3. Generate a single music track using the prompt in music_blueprint.json and save it in hindi_long_assets/")
+        print("4. Run this script again to proceed to Stage 2 (Manual Review)!")
+        
+    elif images_present and needs_manual_review:
+        print("\nSTAGE 2: Assign Effects & Transitions")
+        print("-" * 50)
+        
+        import threading
+        import _thread
+        
+        timeout_state = [False]
+        def timeout_handler():
+            timeout_state[0] = True
+            print("\n⏳ 15-second timeout reached! Defaulting to 'A' (AI Vision Pass).")
+            _thread.interrupt_main()
+            
+        choice = 'A'
+        timer = threading.Timer(15.0, timeout_handler)
+        timer.start()
+        
+        try:
+            user_input = input("Do you want AI to decide effects (A) or do it Manually (M)? [A/M] (15s timeout): ").strip().upper()
+            timer.cancel()
+            if user_input in ['A', 'M']:
+                choice = user_input
+        except EOFError:
+            timer.cancel()
+            pass
+        except KeyboardInterrupt:
+            if not timeout_state[0]:
+                raise
+        
+        if choice == 'A':
+            from py_files.vision_editor import run_vision_pass
+            if not run_vision_pass(str(HIN_ASSETS)):
+                print("❌ AI Vision Pass failed or was aborted.")
+                sys.exit(1)
+        else:
+            if not run_manual_review(str(vid_bp)):
+                print("❌ Manual Review failed or was aborted.")
+                sys.exit(1)
+            
+        print("\n✅ STAGE 2 COMPLETE! Proceeding to Stage 3 immediately...")
+        needs_manual_review = False
+
+    if images_present and not needs_manual_review:
+        print("\nSTAGE 3: Render (Images and Manual Review Confirmed)")
+        print("-" * 50)
+        
+        hin_final = HIN_OUT / "final_hi_long.mp4"
+        hin_ok = True
+        if not hin_final.exists():
+            hin_ok = render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi")
+            if not hin_ok:
+                print("  ❌ Hindi render FAILED — see errors above.")
+            elif not hin_final.exists():
+                print(f"  ❌ Hindi render reported success but {hin_final} is missing!")
+                hin_ok = False
+            else:
+                print(f"  ✅ Hindi render confirmed on disk: {hin_final}")
+        else:
+            print(f"  ✅ Hindi video already rendered ({hin_final.name}). Skipping.")
+        
+        if hin_ok:
+            print("\n✅ Render Complete!")
+        else:
+            sys.exit(1)
+
+    elif not images_present and not needs_blueprints:
+        print("\n⏸️ WAITING FOR ASSETS")
+        print("-" * 50)
+        print("Blueprints are generated, but no images/videos were found.")
+        print("Please generate your images/videos and place them in the folder, then run this script again.")
+
+if __name__ == "__main__":
+    main()
+

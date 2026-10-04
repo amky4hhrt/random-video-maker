@@ -50,7 +50,7 @@ def generate_missing_images(assets_dir):
         base_prompt = scene.get('visual_prompt', '')
         
         # Append a strong style instruction to force FLUX to output high-quality graphic novel art
-        style_suffix = "High-quality graphic novel illustration, detailed comic book art style, dramatic cinematic lighting, gritty realism, masterpiece, highly detailed."
+        style_suffix = "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed."
         prompt = f"{base_prompt}. {style_suffix}"
         
         print(f"Generating Scene {scene_id}...")

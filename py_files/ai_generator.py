@@ -139,7 +139,7 @@ Identify every RECURRING character AND RECURRING location.
 For each character, write a single reusable 'trait_tags' description. Handle age_stages if applicable.
 For each location, write a single reusable 'trait_tags' description. Handle variants if applicable.
 Output a shared negative_prompt for the whole film. KEEP THE negative_prompt UNDER 50 WORDS. Be concise — list only the most important things to avoid.
-Write 'reference_prompt' for each stage/variant using: "High-quality graphic novel illustration, detailed comic book art style, dramatic cinematic lighting, gritty realism, masterpiece, highly detailed"
+Write 'reference_prompt' for each stage/variant using: "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
 NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output. This applies to reference_prompt and trait_tags as well.
 CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your descriptions MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
 """
@@ -400,7 +400,7 @@ RULES:
         
         chunk_scenes = result.get("scenes", [])
         
-        global_style = "High-quality graphic novel illustration, detailed comic book art style, dramatic cinematic lighting, gritty realism, masterpiece, highly detailed"
+        global_style = "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
         
         # Renumber scene_ids to be globally sequential and inject the global style
         for s in chunk_scenes:
