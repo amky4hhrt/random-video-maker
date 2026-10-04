@@ -270,30 +270,37 @@ def main():
         print("\nSTAGE 2: Assign Effects & Transitions")
         print("-" * 50)
         
-        import threading
-        import _thread
+        import select
+        import sys
         
-        timeout_state = [False]
-        def timeout_handler():
-            timeout_state[0] = True
-            print("\n⏳ 15-second timeout reached! Defaulting to 'A' (AI Vision Pass).")
-            _thread.interrupt_main()
-            
+        print("Do you want AI to decide effects (A) or do it Manually (M)? [A/M] (15s timeout): ", end="", flush=True)
         choice = 'A'
-        timer = threading.Timer(15.0, timeout_handler)
-        timer.start()
         
-        try:
-            user_input = input("Do you want AI to decide effects (A) or do it Manually (M)? [A/M] (15s timeout): ").strip().upper()
-            timer.cancel()
-            if user_input in ['A', 'M']:
-                choice = user_input
-        except EOFError:
-            timer.cancel()
-            pass
-        except KeyboardInterrupt:
-            if not timeout_state[0]:
-                raise
+        if sys.platform != 'win32':
+            i, o, e = select.select([sys.stdin], [], [], 15.0)
+            if i:
+                user_input = sys.stdin.readline().strip().upper()
+                if user_input in ['A', 'M']:
+                    choice = user_input
+            else:
+                print("\n⏳ 15-second timeout reached! Defaulting to 'A' (AI Vision Pass).")
+        else:
+            # Fallback for Windows
+            import time
+            import threading
+            def get_input(ret):
+                ret.append(input())
+            user_input_list = []
+            t = threading.Thread(target=get_input, args=(user_input_list,))
+            t.daemon = True
+            t.start()
+            t.join(15.0)
+            if t.is_alive():
+                print("\n⏳ 15-second timeout reached! Defaulting to 'A' (AI Vision Pass).")
+            elif user_input_list:
+                user_input = user_input_list[0].strip().upper()
+                if user_input in ['A', 'M']:
+                    choice = user_input
         
         if choice == 'A':
             from py_files.vision_editor import run_vision_pass
@@ -315,7 +322,7 @@ def main():
         hin_final = HIN_OUT / "final_hi_long.mp4"
         hin_ok = True
         if not hin_final.exists():
-            hin_ok = render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi")
+            hin_ok = render_long_video(str(HIN_ASSETS), str(HIN_ASSETS), str(HIN_OUT), str(MUSIC_DIR), str(SFX_DIR), language="hi", burn_captions=False)
             if not hin_ok:
                 print("  ❌ Hindi render FAILED — see errors above.")
             elif not hin_final.exists():
