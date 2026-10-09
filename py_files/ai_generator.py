@@ -158,8 +158,7 @@ def run_character_pass(story_text, output_path):
 Identify every RECURRING character in the story.
 For each character, write a single reusable 'trait_tags' description. Handle age_stages if applicable.
 Write a 'reference_prompt' for each stage/variant containing purely the physical description of the character (clothing, hair, facial features, etc). Do NOT include any art style descriptions like anime or 3D.
-NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output.
-CONTENT POLICY (CRITICAL): You must creatively sanitize all descriptions to be family friendly. Focus on character expressions and dramatic lighting.
+Naming rule: For 'character_id' and 'name', use only the character's first name.
 """
     
     schema = types.Schema(
@@ -375,12 +374,12 @@ LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
 
 RULES:
 1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
-2. PROMPT FORMAT (CRITICAL): You MUST format every single `visual_prompt` EXACTLY using this strict comma-separated template. Do NOT write natural prose. Do NOT include any art style descriptions. Fill in every section perfectly and separate them with commas: `Character's exact trait_tags and appearance, Single frozen action, Surrounding environment and location trait_tags, Character emotion, Camera angle/shot type`.
+2. PROMPT FORMAT : You MUST format every single `visual_prompt` EXACTLY using this strict comma-separated template. Do NOT write natural prose. Do NOT include any art style descriptions. Fill in every section perfectly and separate them with commas: `Character's exact trait_tags and appearance, Single frozen action, Surrounding environment and location trait_tags, Character emotion, Camera angle/shot type`.
 3. CHARACTERS: Maximum 3 characters present in any single scene.
 4. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
-5. NAMES (CRITICAL): In visual_prompt, ONLY use first names for characters. NEVER use full names or surnames (e.g. write "Meera" not "Meera Sharma"). This is required by the image generator's content policy.
-8. CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your visual_prompts MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, abstract metaphors, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
-9. SINGLE ACTION RULE (CRITICAL): An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
+5. Naming rule: In visual_prompt, only use first names for characters.
+
+9. SINGLE ACTION RULE : An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
 {context_block}"""
         
         # Format only this chunk's transcript
@@ -597,10 +596,10 @@ ENGLISH VIDEO BLUEPRINT (the source storyboard you are adapting):
 AVAILABLE ENGLISH IDS: [{valid_ids_str}]
 
 RULES:
-1. SEMANTIC MATCHING (CRITICAL): Read the Hindi Story provided below, which is broken down into numbered sentences (e.g., [0], [1], [2]). Identify the specific topics/events being spoken about. Find the 'english_source_scene_id' from the English Video Blueprint that best matches that topic.
-2. FAST PACING (CRITICAL): The English video uses rapid scene changes. You MUST use as many of the provided English scenes as possible to maintain this fast pacing. Do not group too many sentences together. Switch images frequently, typically every 1 or 2 sentences!
+1. SEMANTIC MATCHING : Read the Hindi Story provided below, which is broken down into numbered sentences (e.g., [0], [1], [2]). Identify the specific topics/events being spoken about. Find the 'english_source_scene_id' from the English Video Blueprint that best matches that topic.
+2. FAST PACING : The English video uses rapid scene changes. You MUST use as many of the provided English scenes as possible to maintain this fast pacing. Do not group too many sentences together. Switch images frequently, typically every 1 or 2 sentences!
 3. OUTPUT: For each scene, output a sequentially increasing 'scene_id' (1, 2, 3...), the 'english_source_scene_id' you are linking to, and the index number of the first sentence ('start_index') and the index number of the last sentence ('end_index') that belong to that scene. Ensure every sentence from 0 to {len(sentences)-1} is covered!
-4. ASSET REUSE & LIMITS (CRITICAL): 
+4. ASSET REUSE & LIMITS : 
    - You MUST ONLY use the IDs listed above in AVAILABLE ENGLISH IDS. Do not invent new IDs. Do not ask for new images.
    - You MAY reuse an existing 'english_source_scene_id' if the story topic returns, BUT you MUST NOT use the same ID more than 3 times total in the entire blueprint.
    - You MUST NOT use the same ID in consecutive, back-to-back scenes.
