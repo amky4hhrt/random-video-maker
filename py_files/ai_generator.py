@@ -48,16 +48,10 @@ def _call_gemini_with_retry(client, system_instruction, user_content, response_s
                     import json
                     return json.loads(response.text)
                 else:
-                    print(f"
-  ❌ FATAL: Raw Gemini Response object was empty!
-  {response}
-")
+                    print(f"\\n  ❌ FATAL: Raw Gemini Response object was empty!\\n  {response}\\n")
                     raise ValueError("Empty response from API")
             except Exception as e:
-                print(f"
-  ❌ FATAL: Could not parse response text.
-  Raw Response Object: {response}
-")
+                print(f"\\n  ❌ FATAL: Could not parse response text.\\n  Raw Response Object: {response}\\n")
                 raise ValueError("Empty response from API")
                 
         except Exception as e:
