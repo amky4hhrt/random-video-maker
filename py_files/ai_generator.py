@@ -6,11 +6,6 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-AI_PROVIDER = "together" # Options: "gemini", "together"
-TOGETHER_MODEL = "deepseek-ai/DeepSeek-V4-Flash-0731"
-# Other Together options: 
-# - "deepseek-ai/DeepSeek-V4-Pro"
-# - "meta-llama/Llama-3.3-70B-Instruct-Turbo"
 
 CHUNK_DURATION_SECONDS = 180  # 3 minutes per chunk for Director Pass
 
@@ -83,72 +78,6 @@ def _schema_to_json_schema(s):
     if hasattr(s, 'enum') and s.enum:
         res['enum'] = s.enum
     return res
-
-def _call_together_with_retry(system_instruction, user_content, response_schema, max_retries=5):
-    api_key = os.environ.get("TOGETHER_API_KEY")
-    if not api_key:
-        raise ValueError("\u274C Error: TOGETHER_API_KEY environment variable not set.")
-        
-    json_schema = _schema_to_json_schema(response_schema)
-    sys_prompt = system_instruction + """
-    
-CRITICAL INSTRUCTION:
-You MUST respond ONLY with a valid JSON data instance of the following JSON Schema. 
-Do NOT include schema definition fields like 'type: object' or 'properties' in your output. 
-Just output the raw JSON data that satisfies the schema structure.
-
-JSON SCHEMA:
-""" + json.dumps(json_schema, indent=2)
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": TOGETHER_MODEL,
-        "messages": [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": user_content}
-        ],
-        "response_format": {
-            "type": "json_object",
-            "schema": json_schema
-        },
-        "temperature": 0.5,
-        "max_tokens": 8000
-    }
-
-    current_sleep = 5
-    for attempt in range(max_retries):
-        try:
-            resp = requests.post("https://api.together.xyz/v1/chat/completions", headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            
-            content = data["choices"][0]["message"]["content"]
-            # Clean up potential markdown formatting around json
-            content = content.strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-                
-            try:
-                return json.loads(content.strip())
-            except json.JSONDecodeError as je:
-                print(f"  \u26A0\uFE0F JSON Decode Error: {je}")
-                print(f"  --- RAW OUTPUT START ---\n{content[:500]}...\n...{content[-500:]}\n  --- RAW OUTPUT END ---")
-                raise je
-                
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise e
-            print(f"  \u26A0\uFE0F Attempt {attempt + 1} failed. Retrying in {current_sleep}s... ({e})")
-            time.sleep(current_sleep)
-            current_sleep *= 2
 
 def run_character_pass(story_text, output_path):
     print("  \U0001F3AD Running Character Pass...")
@@ -296,7 +225,7 @@ def _split_transcript_into_chunks(transcript_data, chunk_duration=CHUNK_DURATION
 
 def run_director_pass(story_text, transcript_data, char_data, output_path, is_short=False):
     print("  \U0001F3AC Running Director Pass...")
-    client = get_gemini_client() if AI_PROVIDER == "gemini" else None
+    client = get_gemini_client()
     
     # Build reference blocks
     char_refs = "\\n".join(
@@ -388,8 +317,6 @@ RULES:
         
         # Director Pass ALWAYS uses Gemini — DeepSeek overflows on complex schemas
         # with long visual_prompt strings and nested character/location arrays.
-        if client is None:
-            client = get_gemini_client()
         result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
         
         chunk_scenes = result.get("scenes", [])
@@ -626,13 +553,10 @@ RULES:
     )
     
     user_content = f"Numbered Hindi Story:\\n{fmt_input}"
-    client = get_gemini_client() if AI_PROVIDER == "gemini" else None
+    client = get_gemini_client()
     
     print("    -> Sending story to AI for semantic mapping...")
-    if AI_PROVIDER == "gemini":
-        result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
-    else:
-        result = _call_together_with_retry(sys_inst, user_content, schema, max_retries=3)
+    result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
         
     ai_scenes = result.get("scenes", [])
     
