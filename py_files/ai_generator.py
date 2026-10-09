@@ -151,14 +151,13 @@ JSON SCHEMA:
             current_sleep *= 2
 
 def run_character_pass(story_text, output_path):
-    print("  \U0001F3AD Running Character & Location Pass...")
+    print("  \U0001F3AD Running Character Pass...")
     client = get_gemini_client()
     
-    sys_inst = """You are a Casting Director, Character Designer, and Location Scout for 2D animated short films.
-Identify every RECURRING character AND RECURRING location.
+    sys_inst = """You are a Casting Director and Character Designer for 2D animated short films.
+Identify every RECURRING character in the story.
 For each character, write a single reusable 'trait_tags' description. Handle age_stages if applicable.
-For each location, write a single reusable 'trait_tags' description. Handle variants if applicable.
-Write 'reference_prompt' for each stage/variant using: "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
+Write a 'reference_prompt' for each stage/variant containing purely the physical description of the character (clothing, hair, facial features, etc). Do NOT include any art style descriptions like anime or 3D.
 NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output.
 CONTENT POLICY (CRITICAL): You must creatively sanitize all descriptions to be family friendly. Focus on character expressions and dramatic lighting.
 """
@@ -194,10 +193,18 @@ CONTENT POLICY (CRITICAL): You must creatively sanitize all descriptions to be f
         required=["characters"]
     )
     
-    # Character Pass ALWAYS uses Gemini — DeepSeek enters infinite repetition loops
-    # on complex nested schemas (especially the negative_prompt free-text field).
+    # Character Pass ALWAYS uses Gemini
     result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
-        
+    
+    # Post-process to inject the global style, avoiding the copyright filter
+    global_style = "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
+    if "characters" in result:
+        for char in result["characters"]:
+            if "age_stages" in char:
+                for stage in char["age_stages"]:
+                    base_prompt = stage.get("reference_prompt", "")
+                    stage["reference_prompt"] = f"{global_style}, {base_prompt}"
+                    
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=4)
     return result
