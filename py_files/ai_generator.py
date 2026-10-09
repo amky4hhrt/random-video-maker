@@ -158,16 +158,14 @@ def run_character_pass(story_text, output_path):
 Identify every RECURRING character AND RECURRING location.
 For each character, write a single reusable 'trait_tags' description. Handle age_stages if applicable.
 For each location, write a single reusable 'trait_tags' description. Handle variants if applicable.
-Output a shared negative_prompt for the whole film. KEEP THE negative_prompt UNDER 50 WORDS. Be concise — list only the most important things to avoid.
 Write 'reference_prompt' for each stage/variant using: "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
-NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output. This applies to reference_prompt and trait_tags as well.
-CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your descriptions MUST NOT contain any gore, blood, violence, weapons, self-harm, NSFW, or real people. If the story has dark, violent, or mature themes, you MUST creatively SANITIZE the prompt. Focus on character expressions, dramatic lighting, and tense atmosphere rather than explicit physical injuries, weapons, or violent acts.
+NAMING RULE (CRITICAL): For 'character_id' and 'name', use ONLY the character's FIRST NAME (e.g. "Meera", not "Meera Sharma"). NEVER use full names, surnames, or last names anywhere in your output.
+CONTENT POLICY (CRITICAL): You must creatively sanitize all descriptions to be family friendly. Focus on character expressions and dramatic lighting.
 """
     
     schema = types.Schema(
         type=types.Type.OBJECT,
         properties={
-            "negative_prompt": types.Schema(type=types.Type.STRING),
             "characters": types.Schema(
                 type=types.Type.ARRAY,
                 items=types.Schema(
@@ -193,7 +191,7 @@ CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your 
                 )
             ),
         },
-        required=["negative_prompt", "characters"]
+        required=["characters"]
     )
     
     # Character Pass ALWAYS uses Gemini — DeepSeek enters infinite repetition loops
