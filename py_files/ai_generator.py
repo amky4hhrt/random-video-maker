@@ -41,18 +41,34 @@ def _call_gemini_with_retry(client, system_instruction, user_content, response_s
                     ]
                 )
             )
-            if response and response.text:
-                return json.loads(response.text)
-            else:
-                try:
-                    reason = response.candidates[0].finish_reason
-                except:
-                    reason = "Unknown"
-                raise ValueError(f"Empty response (Finish Reason: {reason})")
+            
+            # Immediately try to parse. If text is missing or invalid, it throws.
+            try:
+                if response and response.text:
+                    import json
+                    return json.loads(response.text)
+                else:
+                    print(f"
+  ❌ FATAL: Raw Gemini Response object was empty!
+  {response}
+")
+                    raise ValueError("Empty response from API")
+            except Exception as e:
+                print(f"
+  ❌ FATAL: Could not parse response text.
+  Raw Response Object: {response}
+")
+                raise ValueError("Empty response from API")
+                
         except Exception as e:
+            if "Empty response" in str(e) or "response.text" in str(e):
+                print("  ⛔ Aborting retries to prevent unnecessary API billing. Google is rejecting the prompt.")
+                raise e
+                
             if attempt == max_retries - 1:
                 raise e
-            print(f"  \u26A0\uFE0F Attempt {attempt + 1} failed. Retrying in {current_sleep}s... ({e})")
+            print(f"  ⚠️ Attempt {attempt + 1} failed. Retrying in {current_sleep}s... ({e})")
+            import time
             time.sleep(current_sleep)
             current_sleep *= 2
 
