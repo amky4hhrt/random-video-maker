@@ -182,33 +182,12 @@ CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your 
                     required=["character_id", "name", "age_stages"]
                 )
             ),
-            "locations": types.Schema(
-                type=types.Type.ARRAY,
-                items=types.Schema(
-                    type=types.Type.OBJECT,
-                    properties={
-                        "location_id": types.Schema(type=types.Type.STRING),
-                        "name": types.Schema(type=types.Type.STRING),
-                        "trait_tags": types.Schema(type=types.Type.STRING),
-                        "variants": types.Schema(
-                            type=types.Type.ARRAY,
-                            items=types.Schema(
-                                type=types.Type.OBJECT,
-                                properties={
-                                    "variant_id": types.Schema(type=types.Type.STRING),
-                                    "condition_descriptor": types.Schema(type=types.Type.STRING),
-                                    "trait_tags": types.Schema(type=types.Type.STRING),
-                                    "reference_prompt": types.Schema(type=types.Type.STRING),
-                                },
-                                required=["variant_id", "condition_descriptor", "trait_tags", "reference_prompt"]
-                            )
-                        ),
                     },
                     required=["location_id", "name", "trait_tags", "variants"]
                 )
             ),
         },
-        required=["negative_prompt", "characters", "locations"]
+        required=["negative_prompt", "characters"]
     )
     
     # Character Pass ALWAYS uses Gemini — DeepSeek enters infinite repetition loops
@@ -339,11 +318,6 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, is_sh
                         "characters_present": types.Schema(
                             type=types.Type.ARRAY, items=types.Schema(
                                 type=types.Type.OBJECT, properties={"character_id": types.Schema(type=types.Type.STRING), "stage_id": types.Schema(type=types.Type.STRING)}
-                            )
-                        ),
-                        "locations_present": types.Schema(
-                            type=types.Type.ARRAY, items=types.Schema(
-                                type=types.Type.OBJECT, properties={"location_id": types.Schema(type=types.Type.STRING), "variant_id": types.Schema(type=types.Type.STRING)}
                             )
                         ),
                         "visual_prompt": types.Schema(type=types.Type.STRING),
@@ -680,7 +654,7 @@ RULES:
             "end_time": real_end,
             "scene_type": src.get("scene_type", "description"),
             "characters_present": src.get("characters_present", []),
-            "locations_present": src.get("locations_present", []),
+            
             "visual_prompt": src.get("visual_prompt", ""),
             "camera_movement": src.get("camera_movement", "push_in"),
             "transition_type": src.get("transition_type", "cut"),
