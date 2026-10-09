@@ -271,7 +271,6 @@ def main():
         print("-" * 50)
         
         import select
-        import sys
         
         print("Do you want AI to decide effects (A) or do it Manually (M)? [A/M] (15s timeout): ", end="", flush=True)
         choice = 'A'

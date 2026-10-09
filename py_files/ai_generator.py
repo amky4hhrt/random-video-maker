@@ -33,12 +33,22 @@ def _call_gemini_with_retry(client, system_instruction, user_content, response_s
                     response_mime_type="application/json",
                     response_schema=response_schema,
                     max_output_tokens=65536,
+                    safety_settings=[
+                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                    ]
                 )
             )
             if response and response.text:
                 return json.loads(response.text)
             else:
-                raise ValueError("Empty response")
+                try:
+                    reason = response.candidates[0].finish_reason
+                except:
+                    reason = "Unknown"
+                raise ValueError(f"Empty response (Finish Reason: {reason})")
         except Exception as e:
             if attempt == max_retries - 1:
                 raise e
