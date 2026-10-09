@@ -182,10 +182,6 @@ CONTENT POLICY (CRITICAL): The image generator has a strict safety filter. Your 
                     required=["character_id", "name", "age_stages"]
                 )
             ),
-                    },
-                    required=["location_id", "name", "trait_tags", "variants"]
-                )
-            ),
         },
         required=["negative_prompt", "characters"]
     )
