@@ -181,3 +181,7 @@ Assign EXACTLY ONE camera movement and transition per scene. The schema uses str
     except Exception as e:
         print(f"  \u274C Vision Pass failed: {e}")
         return False
+    finally:
+        for f in glob.glob(os.path.join(str(proj), "temp_*_*.jpg")):
+            try: os.remove(f)
+            except: pass

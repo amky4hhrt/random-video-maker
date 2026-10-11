@@ -65,7 +65,7 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
     dur += 2.0  # Add 2 seconds to accommodate cinematic reverb tail and music outro
     
     final_audio = os.path.join(temp_dir, "final_audio.mp3")
-    generate_audio_mix(audio_dir, vo_path, mus_bp, music_dir, sfx_dir, final_audio, dur)
+    generate_audio_mix(audio_dir, vo_path, mus_bp, music_dir, sfx_dir, final_audio, dur, vid_bp=vid_bp)
     
     # 2. Video Clips with Ken Burns (9:16 Vertical)
     WIDTH, HEIGHT = 1080, 1920
@@ -115,18 +115,18 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
         
         if mtype == "image":
             vf = build_ken_burns_filter(camera_movement, frames, WIDTH, HEIGHT, profile)
-            cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", asset_path, "-t", str(render_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [out_clip]
+            cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", asset_path, "-an", "-t", str(render_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [out_clip]
             success = run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})")
         else:
             video_dur = get_video_duration(asset_path)
             scale_filter = f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT}"
             
             if video_dur >= render_dur:
-                cmd = ["ffmpeg", "-y", "-i", asset_path, "-t", str(render_dur), "-vf", f"{scale_filter},fps=30"] + _video_encode_args("fast") + [out_clip]
+                cmd = ["ffmpeg", "-y", "-i", asset_path, "-an", "-t", str(render_dur), "-vf", f"{scale_filter},fps=30,format=yuv420p"] + _video_encode_args("fast") + [out_clip]
                 success = run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})")
             else:
                 vid_part = os.path.join(temp_dir, f"clip_{i}_{sid}_vid.mp4")
-                cmd_vid = ["ffmpeg", "-y", "-i", asset_path, "-vf", f"{scale_filter},fps=30"] + _video_encode_args("fast") + [vid_part]
+                cmd_vid = ["ffmpeg", "-y", "-i", asset_path, "-an", "-vf", f"{scale_filter},fps=30,format=yuv420p"] + _video_encode_args("fast") + [vid_part]
                 run_ffmpeg(cmd_vid, f"Scene {i+1}/{total_scenes} (ID:{sid} P1)")
                 
                 last_frame_img = os.path.join(temp_dir, f"clip_{i}_{sid}_last.jpg")
@@ -137,15 +137,17 @@ def render_short_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, la
                 rem_frames = max(int(rem_dur * 30), 2)
                 vf = build_ken_burns_filter(camera_movement, rem_frames, WIDTH, HEIGHT, profile)
                 img_part = os.path.join(temp_dir, f"clip_{i}_{sid}_img.mp4")
-                cmd_img = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", last_frame_img, "-t", str(rem_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [img_part]
+                cmd_img = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", last_frame_img, "-an", "-t", str(rem_dur), "-vf", f"{vf},fps=30,format=yuv420p", "-r", "30"] + _video_encode_args("fast") + [img_part]
                 run_ffmpeg(cmd_img, f"Scene {i+1}/{total_scenes} (ID:{sid} P2)")
                 
-                list_file = os.path.join(temp_dir, f"list_{i}_{sid}.txt")
-                with open(list_file, "w") as f:
-                    f.write(f"file '{os.path.abspath(vid_part)}'\n")
-                    f.write(f"file '{os.path.abspath(img_part)}'\n")
-                
-                cmd_concat = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c:v", "copy", out_clip]
+                cmd_concat = [
+                    "ffmpeg", "-y",
+                    "-i", vid_part,
+                    "-i", img_part,
+                    "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v_out]",
+                    "-map", "[v_out]",
+                    "-an"
+                ] + _video_encode_args("fast") + [out_clip]
                 success = run_ffmpeg(cmd_concat, f"Scene {i+1}/{total_scenes} (ID:{sid})")
 
         if success:

@@ -188,10 +188,8 @@ def find_asset(input_dir, base_name, extensions):
 
 
 # ─── Final Audio Mix ──────────────────────────────────────────────
-def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_audio, total_duration):
+def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_audio, total_duration, vid_bp=None):
     temp_dir = os.path.dirname(output_audio)
-    
-    # (Cinematic Reverb Removed)
     
     # Find Custom Music
     import glob
@@ -215,36 +213,81 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
             if custom_music_path:
                 print(f"  🎵 Using fallback English music: {os.path.basename(custom_music_path)}")
         
+    # Collect valid SFX events from blueprint
+    sfx_events = []
+    if vid_bp and sfx_dir and os.path.exists(sfx_dir):
+        scenes = vid_bp.get("video_blueprint", []) or vid_bp.get("scenes", [])
+        for s in scenes:
+            sfx_id = s.get("sfx_id")
+            if sfx_id and str(sfx_id).lower() not in ["none", "null", ""]:
+                sfx_file = find_asset(sfx_dir, sfx_id, ('.wav', '.mp3', '.ogg', '.flac', '.m4a'))
+                if sfx_file and os.path.exists(sfx_file):
+                    start_s = float(s.get("start_time", 0.0))
+                    start_ms = int(max(0.0, start_s) * 1000)
+                    sfx_events.append((sfx_file, start_ms, sfx_id))
+                    
+    if sfx_events:
+        print(f"  🔊 Found {len(sfx_events)} dynamic sound effect(s) to mix.")
+
     cmd = ["ffmpeg", "-y", "-threads", str(CPU_THREADS)]
+    cmd.extend(["-i", vo_path])
     
-    if not custom_music_path:
+    next_idx = 1
+    if custom_music_path:
+        print(f"  🎵 Mixing with Custom Background Music: {os.path.basename(custom_music_path)}")
+        cmd.extend(["-stream_loop", "-1", "-i", custom_music_path])
+        bgm_input_idx = 1
+        next_idx = 2
+    else:
         print("  ⚠️ No custom background music found. Rendering voiceover only.")
-        cmd.extend(["-i", vo_path, "-filter_complex", "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,alimiter=limit=0.95[a_out]", "-map", "[a_out]", "-t", str(total_duration), "-c:a", "libmp3lame", "-b:a", "192k", output_audio])
-        run_ffmpeg(cmd, "Final Audio Mix (VO Only)")
-        return
+        bgm_input_idx = None
+
+    sfx_filter_chains = []
+    for idx, (sfx_file, start_ms, sfx_id) in enumerate(sfx_events):
+        cmd.extend(["-i", sfx_file])
+        sfx_filter_chains.append(f"[{next_idx + idx}:a]aresample=44100,volume=0.35,adelay={start_ms}|{start_ms}[sfx_{idx}]")
+
+    # Build audio filtergraph
+    filter_sections = []
+    
+    if bgm_input_idx is not None:
+        # VO normalizes & splits for sidechain ducking trigger
+        filter_sections.append("[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,apad,asplit[vo_norm][vo_sc]")
+        filter_sections.append(f"[{bgm_input_idx}:a]aresample=44100,volume=0.35[bgm_resampled]")
+        filter_sections.append("[bgm_resampled][vo_sc]sidechaincompress=threshold=-20dB:ratio=2.5:attack=100:release=1000[bgm_ducked]")
         
-    print(f"  🎵 Mixing with Custom Background Music: {os.path.basename(custom_music_path)}")
-    cmd.extend(["-i", vo_path, "-stream_loop", "-1", "-i", custom_music_path])
-    
-    # True Sidechain Compression
-    # [1:a] - music, [0:a] - voiceover
-    # Sidechain dynamically ducks the music when voiceover triggers it
-    filter_complex = (
-        "[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,apad,asplit[vo_norm][vo_sc]; "
-        "[1:a]aresample=44100,volume=0.35[bgm_resampled]; "
-        "[bgm_resampled][vo_sc]sidechaincompress=threshold=-20dB:ratio=2.5:attack=100:release=1000[bgm_ducked]; "
-        "[bgm_ducked][vo_norm]amix=inputs=2:duration=first:weights=1 1,alimiter=limit=0.95[a_out]"
-    )
-    
+        if sfx_events:
+            filter_sections.extend(sfx_filter_chains)
+            if len(sfx_events) > 1:
+                all_sfx_tags = "".join(f"[sfx_{i}]" for i in range(len(sfx_events)))
+                filter_sections.append(f"{all_sfx_tags}amix=inputs={len(sfx_events)}:normalize=0[sfx_bed]")
+            else:
+                filter_sections.append("[sfx_0]asplit[sfx_bed]")
+            filter_sections.append("[bgm_ducked][vo_norm][sfx_bed]amix=inputs=3:duration=first:weights=1 1 0.7,alimiter=limit=0.95[a_out]")
+        else:
+            filter_sections.append("[bgm_ducked][vo_norm]amix=inputs=2:duration=first:weights=1 1,alimiter=limit=0.95[a_out]")
+    else:
+        filter_sections.append("[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,apad[vo_norm]")
+        if sfx_events:
+            filter_sections.extend(sfx_filter_chains)
+            if len(sfx_events) > 1:
+                all_sfx_tags = "".join(f"[sfx_{i}]" for i in range(len(sfx_events)))
+                filter_sections.append(f"{all_sfx_tags}amix=inputs={len(sfx_events)}:normalize=0[sfx_bed]")
+            else:
+                filter_sections.append("[sfx_0]asplit[sfx_bed]")
+            filter_sections.append("[vo_norm][sfx_bed]amix=inputs=2:duration=first:weights=1 0.7,alimiter=limit=0.95[a_out]")
+        else:
+            filter_sections.append("[vo_norm]alimiter=limit=0.95[a_out]")
+
     cmd.extend([
-        "-filter_complex", filter_complex,
+        "-filter_complex", "; ".join(filter_sections),
         "-map", "[a_out]",
         "-t", str(total_duration),
         "-c:a", "libmp3lame", "-b:a", "192k",
         output_audio
     ])
     
-    run_ffmpeg(cmd, "Final Audio Mix (Sidechain Ducking)")
+    run_ffmpeg(cmd, "Final Audio Mix (VO + BGM + Dynamic SFX)")
 
 def stitch_with_crossfades(clip_paths, clip_info, output_path, temp_dir):
     """
@@ -367,7 +410,7 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
     dur += 2.0  # Add 2 seconds to accommodate cinematic reverb tail and music outro
     
     final_audio = os.path.join(temp_dir, "final_audio.mp3")
-    generate_audio_mix(audio_dir, vo_path, mus_bp, music_dir, sfx_dir, final_audio, dur)
+    generate_audio_mix(audio_dir, vo_path, mus_bp, music_dir, sfx_dir, final_audio, dur, vid_bp=vid_bp)
     
     # 2. Video Clips with Ken Burns
     WIDTH, HEIGHT = 1920, 1080
@@ -417,18 +460,18 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
         
         if mtype == "image":
             vf = build_ken_burns_filter(camera_movement, frames, WIDTH, HEIGHT, profile)
-            cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", asset_path, "-t", str(render_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [out_clip]
+            cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", asset_path, "-an", "-t", str(render_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [out_clip]
             success = run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})")
         else:
             video_dur = get_video_duration(asset_path)
             scale_filter = f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT}"
             
             if video_dur >= render_dur:
-                cmd = ["ffmpeg", "-y", "-i", asset_path, "-t", str(render_dur), "-vf", f"{scale_filter},fps=30"] + _video_encode_args("fast") + [out_clip]
+                cmd = ["ffmpeg", "-y", "-i", asset_path, "-an", "-t", str(render_dur), "-vf", f"{scale_filter},fps=30,format=yuv420p"] + _video_encode_args("fast") + [out_clip]
                 success = run_ffmpeg(cmd, f"Scene {i+1}/{total_scenes} (ID:{sid})")
             else:
                 vid_part = os.path.join(temp_dir, f"clip_{i}_{sid}_vid.mp4")
-                cmd_vid = ["ffmpeg", "-y", "-i", asset_path, "-vf", f"{scale_filter},fps=30"] + _video_encode_args("fast") + [vid_part]
+                cmd_vid = ["ffmpeg", "-y", "-i", asset_path, "-an", "-vf", f"{scale_filter},fps=30,format=yuv420p"] + _video_encode_args("fast") + [vid_part]
                 run_ffmpeg(cmd_vid, f"Scene {i+1}/{total_scenes} (ID:{sid} P1)")
                 
                 last_frame_img = os.path.join(temp_dir, f"clip_{i}_{sid}_last.jpg")
@@ -439,15 +482,17 @@ def render_long_video(visual_dir, audio_dir, output_dir, music_dir, sfx_dir, lan
                 rem_frames = max(int(rem_dur * 30), 2)
                 vf = build_ken_burns_filter(camera_movement, rem_frames, WIDTH, HEIGHT, profile)
                 img_part = os.path.join(temp_dir, f"clip_{i}_{sid}_img.mp4")
-                cmd_img = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", last_frame_img, "-t", str(rem_dur), "-vf", vf, "-r", "30"] + _video_encode_args("fast") + [img_part]
+                cmd_img = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", last_frame_img, "-an", "-t", str(rem_dur), "-vf", f"{vf},fps=30,format=yuv420p", "-r", "30"] + _video_encode_args("fast") + [img_part]
                 run_ffmpeg(cmd_img, f"Scene {i+1}/{total_scenes} (ID:{sid} P2)")
                 
-                list_file = os.path.join(temp_dir, f"list_{i}_{sid}.txt")
-                with open(list_file, "w") as f:
-                    f.write(f"file '{os.path.abspath(vid_part)}'\n")
-                    f.write(f"file '{os.path.abspath(img_part)}'\n")
-                
-                cmd_concat = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c:v", "copy", out_clip]
+                cmd_concat = [
+                    "ffmpeg", "-y",
+                    "-i", vid_part,
+                    "-i", img_part,
+                    "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v_out]",
+                    "-map", "[v_out]",
+                    "-an"
+                ] + _video_encode_args("fast") + [out_clip]
                 success = run_ffmpeg(cmd_concat, f"Scene {i+1}/{total_scenes} (ID:{sid})")
 
         if success:

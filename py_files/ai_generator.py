@@ -223,9 +223,22 @@ def _split_transcript_into_chunks(transcript_data, chunk_duration=CHUNK_DURATION
     return chunks
 
 
-def run_director_pass(story_text, transcript_data, char_data, output_path, is_short=False):
+def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_lib_path=None, is_short=False):
     print("  \U0001F3AC Running Director Pass...")
     client = get_gemini_client()
+    
+    # Load SFX library if provided
+    sfx_library = {}
+    if sfx_lib_path and Path(sfx_lib_path).exists():
+        try:
+            with open(sfx_lib_path, "r", encoding="utf-8") as f:
+                sfx_library = json.load(f)
+        except Exception as e:
+            print(f"  ⚠️ Could not load SFX library: {e}")
+            
+    sfx_refs = "\\n".join(
+        f"- {k}: {v}" for k, v in sfx_library.items()
+    ) if sfx_library else "(none)"
     
     # Build reference blocks
     char_refs = "\\n".join(
@@ -260,6 +273,7 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, is_sh
                             )
                         ),
                         "visual_prompt": types.Schema(type=types.Type.STRING),
+                        "sfx_id": types.Schema(type=types.Type.STRING, description="Exact sfx_id from the SFX library if a matching sound applies, or 'none' if none applies."),
                     },
                     required=["scene_id", "start_time", "end_time", "scene_type", "visual_prompt"]
                 )
@@ -300,6 +314,7 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, is_sh
         
         sys_inst = f"""You are an Elite Executive Video Director. Segment the timestamped script into sequential visual scenes.
 LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
+AVAILABLE SFX LIBRARY:\\n{sfx_refs}
 
 RULES:
 1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
@@ -307,6 +322,7 @@ RULES:
 3. CHARACTERS: Maximum 3 characters present in any single scene.
 4. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
 5. Naming rule: In visual_prompt, only use first names for characters.
+6. SFX SELECTION: Review the SFX LIBRARY. If an available sound effect fits the action or setting in this scene, assign that exact 'sfx_id'. If NO sound effect fits naturally, set 'sfx_id' to "none". Do NOT force an irrelevant sound effect. Most scenes should NOT have sound effects—reserve them for key dramatic moments.
 
 9. SINGLE ACTION RULE : An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
 {context_block}"""
@@ -332,6 +348,13 @@ RULES:
             start_t = s.get("start_time", 0.0)
             end_t = s.get("end_time", 0.0)
             s["duration"] = round(end_t - start_t, 3)
+            
+            raw_sfx = s.get("sfx_id", "none")
+            if raw_sfx and str(raw_sfx).lower() not in ["none", "null", ""]:
+                s["sfx_id"] = str(raw_sfx).strip()
+            else:
+                s["sfx_id"] = None
+                
             scene_counter += 1
         
         all_scenes.extend(chunk_scenes)
@@ -449,7 +472,7 @@ def generate_blueprints(project_dir, is_short=False):
             print("  \u2705 Skipping Character Pass (character_prompts.json already exists)")
 
         if not vid_out.exists():
-            run_director_pass(story_text, transcript_data, char_data, vid_out, is_short=is_short)
+            run_director_pass(story_text, transcript_data, char_data, vid_out, sfx_lib_path=sfx_lib, is_short=is_short)
         else:
             print("  \u2705 Skipping Director Pass (video_blueprint.json already exists)")
         
@@ -592,7 +615,8 @@ RULES:
             "visual_prompt": src.get("visual_prompt", ""),
             "camera_movement": src.get("camera_movement", "push_in"),
             "transition_type": src.get("transition_type", "cut"),
-            "transition_duration": src.get("transition_duration", 0.0)
+            "transition_duration": src.get("transition_duration", 0.0),
+            "sfx_id": src.get("sfx_id", None)
         })
         
     final_result = {"scenes": final_scenes}
