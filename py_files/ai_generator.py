@@ -227,14 +227,20 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
     print("  \U0001F3AC Running Director Pass...")
     client = get_gemini_client()
     
-    # Load SFX library if provided
+    # Load SFX library if provided (checks both sfx_library.json and sfx.json)
     sfx_library = {}
-    if sfx_lib_path and Path(sfx_lib_path).exists():
-        try:
-            with open(sfx_lib_path, "r", encoding="utf-8") as f:
-                sfx_library = json.load(f)
-        except Exception as e:
-            print(f"  ⚠️ Could not load SFX library: {e}")
+    if sfx_lib_path:
+        p = Path(sfx_lib_path)
+        if not p.exists():
+            alt = p.parent / "sfx.json" if p.name == "sfx_library.json" else p.parent / "sfx_library.json"
+            if alt.exists():
+                p = alt
+        if p.exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    sfx_library = json.load(f)
+            except Exception as e:
+                print(f"  ⚠️ Could not load SFX library: {e}")
             
     sfx_refs = "\\n".join(
         f"- {k}: {v}" for k, v in sfx_library.items()
@@ -273,7 +279,8 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
                             )
                         ),
                         "visual_prompt": types.Schema(type=types.Type.STRING),
-                        "sfx_id": types.Schema(type=types.Type.STRING, description="Exact sfx_id from the SFX library if a matching sound applies, or 'none' if none applies."),
+                        "sfx_id": types.Schema(type=types.Type.STRING, description="Existing sfx_id from library if good match, OR new snake_case ID (e.g. coins_drop_01) if proposing new sound, or 'none' if no sound needed."),
+                        "sfx_prompt": types.Schema(type=types.Type.STRING, description="If proposing a new sfx_id, write a rich sound effect prompt for ElevenLabs. If reusing existing sound or if sfx_id is 'none', write 'none'."),
                     },
                     required=["scene_id", "start_time", "end_time", "scene_type", "visual_prompt"]
                 )
@@ -290,6 +297,7 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
         print(f"    📦 Transcript split into {total_chunks} chunks (~{CHUNK_DURATION_SECONDS}s each)")
     
     all_scenes = []
+    new_sfx_added = {}
     scene_counter = 1
     prev_scenes_context = []  # Last 2 scenes from previous chunk for continuity
     
@@ -322,7 +330,12 @@ RULES:
 3. CHARACTERS: Maximum 3 characters present in any single scene.
 4. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
 5. Naming rule: In visual_prompt, only use first names for characters.
-6. SFX SELECTION: Review the SFX LIBRARY. If an available sound effect fits the action or setting in this scene, assign that exact 'sfx_id'. If NO sound effect fits naturally, set 'sfx_id' to "none". Do NOT force an irrelevant sound effect. Most scenes should NOT have sound effects—reserve them for key dramatic moments.
+6. SFX SELECTION & GENERATION:
+- Check the AVAILABLE SFX LIBRARY. If an existing sound in the library fits this scene, reuse its exact 'sfx_id' and set 'sfx_prompt' to "none".
+- If NO existing sound in the library fits, but the scene genuinely calls for a sound effect (e.g. coins clinking, heavy sacks dragging, horse hooves, door opening):
+  - Propose a new 'sfx_id' in snake_case with a number (e.g. "coins_inspect_01", "sacks_drag_01").
+  - Provide a vivid, descriptive 'sfx_prompt' for an AI sound generator (e.g. "Gentle metallic clinking of gold coins being inspected on a wooden desk").
+- If the scene is ordinary dialogue or quiet and does NOT need a sound effect, set 'sfx_id' to "none" and 'sfx_prompt' to "none". Most scenes should NOT have sound effects—reserve them for key dramatic moments.
 
 9. SINGLE ACTION RULE : An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
 {context_block}"""
@@ -350,10 +363,24 @@ RULES:
             s["duration"] = round(end_t - start_t, 3)
             
             raw_sfx = s.get("sfx_id", "none")
-            if raw_sfx and str(raw_sfx).lower() not in ["none", "null", ""]:
-                s["sfx_id"] = str(raw_sfx).strip()
+            raw_prompt = s.get("sfx_prompt", "none")
+            
+            is_valid_sfx = raw_sfx and str(raw_sfx).lower() not in ["none", "null", ""]
+            is_valid_prompt = raw_prompt and str(raw_prompt).lower() not in ["none", "null", ""]
+            
+            if is_valid_sfx:
+                sfx_key = str(raw_sfx).strip().lower()
+                s["sfx_id"] = sfx_key
+                
+                # If this is a new sound effect proposed by AI, register it!
+                if is_valid_prompt and sfx_key not in sfx_library:
+                    sfx_library[sfx_key] = str(raw_prompt).strip()
+                    new_sfx_added[sfx_key] = str(raw_prompt).strip()
             else:
                 s["sfx_id"] = None
+                
+            if "sfx_prompt" in s:
+                del s["sfx_prompt"]
                 
             scene_counter += 1
         
@@ -365,6 +392,42 @@ RULES:
         if total_chunks > 1:
             print(f"      ✅ Got {len(chunk_scenes)} scenes (total so far: {len(all_scenes)})")
     
+    # Auto-register newly proposed sound effects into master sfx library
+    if new_sfx_added and sfx_lib_path:
+        try:
+            sfx_dir = Path(sfx_lib_path).parent
+            with open(sfx_dir / "sfx.json", "w", encoding="utf-8") as f:
+                json.dump(sfx_library, f, indent=4)
+            with open(sfx_dir / "sfx_library.json", "w", encoding="utf-8") as f:
+                json.dump(sfx_library, f, indent=4)
+            print(f"    ✨ Auto-registered {len(new_sfx_added)} new sound effect(s) in sfx/sfx.json:")
+            for k, v in new_sfx_added.items():
+                print(f"      - {k}: \"{v}\"")
+        except Exception as e:
+            print(f"    ⚠️ Could not update master sfx library file: {e}")
+
+    # Build and save sfx_blueprint.json summary for this specific video project
+    sfx_blueprint = {}
+    for s in all_scenes:
+        sid = s.get("sfx_id")
+        if sid:
+            if sid not in sfx_blueprint:
+                desc = sfx_library.get(sid, "Custom sound effect")
+                sfx_blueprint[sid] = {
+                    "prompt": desc,
+                    "scenes": [s.get("scene_id")],
+                    "time_ranges": [f"{s.get('start_time')}s - {s.get('end_time')}s"]
+                }
+            else:
+                sfx_blueprint[sid]["scenes"].append(s.get("scene_id"))
+                sfx_blueprint[sid]["time_ranges"].append(f"{s.get('start_time')}s - {s.get('end_time')}s")
+                
+    if sfx_blueprint:
+        sfx_bp_file = Path(output_path).parent / "sfx_blueprint.json"
+        with open(sfx_bp_file, "w", encoding="utf-8") as f:
+            json.dump(sfx_blueprint, f, indent=4)
+        print(f"    🔊 Saved sfx_blueprint.json with {len(sfx_blueprint)} sound effect(s) for this video!")
+
     # Save the complete stitched blueprint
     final_result = {"scenes": all_scenes}
     with open(output_path, "w", encoding="utf-8") as f:

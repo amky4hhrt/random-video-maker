@@ -262,9 +262,10 @@ def main():
         print("\n✅ STAGE 1 COMPLETE!")
         print("NEXT STEPS:")
         print("1. Review character_prompts.json and video_blueprint.json")
-        print("2. Generate assets and save them in hindi_long_assets/ (e.g. 1.jpg)")
-        print("3. Generate a single music track using the prompt in music_blueprint.json and save it in hindi_long_assets/")
-        print("4. Run this script again to proceed to Stage 2 (Manual Review)!")
+        print("2. Generate visual assets and save them in hindi_long_assets/ (e.g. 1.jpg, 2.mp4)")
+        print("3. Generate a background music track using music_blueprint.json and save it in hindi_long_assets/")
+        print("4. (Optional) Check sfx_blueprint.json: generate any needed SFX with ElevenLabs and save in sfx/")
+        print("5. Run this script again to proceed to Stage 2 (Manual Review)!")
         
     elif images_present and needs_manual_review:
         print("\nSTAGE 2: Assign Effects & Transitions")

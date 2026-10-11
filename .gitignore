@@ -7,6 +7,10 @@
 !*.py
 !.gitignore
 !README.md
+!sfx/
+!sfx/*.json
+!music/
+!music/*.json
 
 # Explictly ignore generated and heavy folders (just to be safe)
 english_long_assets/
@@ -14,8 +18,10 @@ hindi_long_assets/
 english_short_assets/
 hindi_short_assets/
 output/
-music/
-sfx/
+music/*.mp3
+music/*.wav
+sfx/*.mp3
+sfx/*.wav
 Flow_Prototype/
 __pycache__/
 .idea/
