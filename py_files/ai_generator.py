@@ -17,7 +17,7 @@ def get_gemini_client():
     return genai.Client(api_key=api_key)
 
 def _call_gemini_with_retry(client, system_instruction, user_content, response_schema, max_retries=5):
-    current_sleep = 5
+    current_sleep = 3
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
@@ -43,23 +43,132 @@ def _call_gemini_with_retry(client, system_instruction, user_content, response_s
                     import json
                     return json.loads(response.text)
                 else:
-                    print(f"\\n  ❌ FATAL: Raw Gemini Response object was empty!\\n  {response}\\n")
-                    raise ValueError("Empty response from API")
+                    feedback = getattr(response, "prompt_feedback", None)
+                    print(f"\n  ⚠️ Gemini returned empty/blocked response (feedback: {feedback})")
+                    raise ValueError("PROHIBITED_CONTENT: Empty or blocked response from Gemini API")
             except Exception as e:
-                print(f"\\n  ❌ FATAL: Could not parse response text.\\n  Raw Response Object: {response}\\n")
-                raise ValueError("Empty response from API")
+                err_str = str(e)
+                if "PROHIBITED_CONTENT" in err_str:
+                    raise e
+                print(f"\n  ❌ FATAL: Could not parse response text.\n  Raw Response Object: {response}\n")
+                raise ValueError(f"Empty response from API: {e}")
                 
         except Exception as e:
-            if "Empty response" in str(e) or "response.text" in str(e):
-                print("  ⛔ Aborting retries to prevent unnecessary API billing. Google is rejecting the prompt.")
-                raise e
+            err_str = str(e)
+            if "Empty response" in err_str or "response.text" in err_str or "PROHIBITED_CONTENT" in err_str or "block_reason" in err_str:
+                print("  ⛔ Google Gemini rejected prompt due to automated content filter.")
+                raise ValueError(f"GEMINI_SAFETY_BLOCK: {err_str}")
                 
             if attempt == max_retries - 1:
                 raise e
             print(f"  ⚠️ Attempt {attempt + 1} failed. Retrying in {current_sleep}s... ({e})")
-            import time
             time.sleep(current_sleep)
             current_sleep *= 2
+
+def _clean_and_parse_json(raw_text):
+    import re
+    if not raw_text or not str(raw_text).strip():
+        raise ValueError("Cannot parse JSON from empty response")
+        
+    cleaned = str(raw_text).strip()
+    # Strip <think>...</think> reasoning tags
+    cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL).strip()
+    
+    # Strip markdown code blocks
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+    
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        # Fallback: extract outer { ... }
+        s = cleaned.find("{")
+        e = cleaned.rfind("}")
+        if s != -1 and e != -1 and e > s:
+            return json.loads(cleaned[s:e+1])
+        raise
+
+def _call_together_deepseek(system_instruction, user_content, response_schema):
+    """Fallback handler using Together AI DeepSeek models with multi-model redundancy."""
+    together_key = os.environ.get("TOGETHER_API_KEY")
+    if not together_key:
+        raise ValueError("TOGETHER_API_KEY environment variable not set for DeepSeek fallback.")
+        
+    json_schema = _schema_to_json_schema(response_schema)
+    schema_str = json.dumps(json_schema, indent=2)
+    
+    prompt = (
+        f"{system_instruction}\n\n"
+        f"CRITICAL: You MUST respond ONLY with a valid JSON object strictly conforming to this JSON Schema:\n"
+        f"{schema_str}\n\n"
+        f"Do NOT include markdown formatting, think tags, or text outside the JSON."
+    )
+    
+    url = "https://api.together.xyz/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {together_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # Priority: DeepSeek-V4.1-Flash first, DeepSeek-V3 backup
+    available_deepseeks = [
+        "deepseek-ai/DeepSeek-V4.1-Flash",
+        "deepseek-ai/DeepSeek-V3"
+    ]
+    
+    last_error = None
+    for model_name in available_deepseeks:
+        print(f"  🚀 Calling Together AI ({model_name})...")
+        payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user_content}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 8192
+        }
+        
+        for attempt in range(3):
+            try:
+                resp = requests.post(url, json=payload, headers=headers, timeout=120)
+                if resp.status_code == 200:
+                    if not resp.text or not resp.text.strip():
+                        print(f"    ⚠️ Empty HTTP 200 body from Together AI ({model_name})")
+                        time.sleep(2)
+                        continue
+                    data = resp.json()
+                    msg = data["choices"][0]["message"]
+                    raw_content = msg.get("content") or msg.get("text") or ""
+                    if not raw_content and "reasoning" in msg:
+                        raw_content = msg.get("reasoning_content") or msg.get("reasoning") or ""
+                    
+                    parsed = _clean_and_parse_json(raw_content)
+                    return parsed
+                elif resp.status_code in (429, 500, 502, 503, 504):
+                    err_msg = resp.text.strip()[:200]
+                    print(f"    ⚠️ Together AI ({model_name}) HTTP {resp.status_code}: {err_msg}")
+                    if attempt < 2:
+                        wait_sec = (attempt + 1) * 3
+                        print(f"    ⏳ Pausing {wait_sec}s before retry {attempt+2}/3...")
+                        time.sleep(wait_sec)
+                    else:
+                        print(f"    🔄 Moving to next DeepSeek model...")
+                        break
+                else:
+                    print(f"    ⚠️ Together AI ({model_name}) HTTP {resp.status_code}: {resp.text.strip()[:200]}")
+                    break
+            except Exception as e:
+                print(f"    ⚠️ Connection/Parse error on Together AI ({model_name}): {e}")
+                time.sleep(2)
+                last_error = e
+
+    raise RuntimeError(f"Together AI DeepSeek fallback failed across all models. Last error: {last_error}")
 
 def _schema_to_json_schema(s):
     res = {}
@@ -121,8 +230,18 @@ Naming rule: For 'character_id' and 'name', use only the character's first name.
         required=["characters"]
     )
     
-    # Character Pass ALWAYS uses Gemini
-    result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
+    # Character Pass: Try Gemini first, fallback to DeepSeek if Gemini fails
+    try:
+        client = get_gemini_client()
+        result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
+    except Exception as gemini_err:
+        print(f"\n  ⚠️ Gemini failed during Character Pass: {gemini_err}")
+        if os.environ.get("TOGETHER_API_KEY"):
+            print("  🔄 Scrapping and restarting Character Pass using DeepSeek (Together AI)...")
+            result = _call_together_deepseek(sys_inst, story_text, schema)
+        else:
+            print("  ⛔ TOGETHER_API_KEY not found in environment. Cannot execute DeepSeek fallback.")
+            raise gemini_err
     
     # Post-process to inject the global style, avoiding the copyright filter
     global_style = "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
@@ -225,7 +344,6 @@ def _split_transcript_into_chunks(transcript_data, chunk_duration=CHUNK_DURATION
 
 def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_lib_path=None, is_short=False):
     print("  \U0001F3AC Running Director Pass...")
-    client = get_gemini_client()
     
     # Load SFX library if provided (checks both sfx_library.json and sfx.json)
     sfx_library = {}
@@ -296,33 +414,35 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
     if total_chunks > 1:
         print(f"    📦 Transcript split into {total_chunks} chunks (~{CHUNK_DURATION_SECONDS}s each)")
     
-    all_scenes = []
-    new_sfx_added = {}
-    scene_counter = 1
-    prev_scenes_context = []  # Last 2 scenes from previous chunk for continuity
-    
-    for chunk in chunks:
-        chunk_idx = chunk['chunk_index']
-        chunk_words = chunk['words']
+    def _run_all_chunks(provider="gemini", client=None):
+        all_scenes = []
+        new_sfx_added = {}
+        scene_counter = 1
+        prev_scenes_context = []  # Last 2 scenes from previous chunk for continuity
+        active_sfx_lib = dict(sfx_library)
         
-        if total_chunks > 1:
-            print(f"    → Chunk {chunk_idx+1}/{total_chunks} "
-                  f"[{chunk['start_time']:.1f}s - {chunk['end_time']:.1f}s]...")
-        
-        # Build context carryover from previous chunk
-        context_block = ""
-        if prev_scenes_context:
-            prev_summary = "\n".join(
-                f"  Scene {s.get('scene_id')}: [{s.get('start_time')}s-{s.get('end_time')}s] "
-                f"type={s.get('scene_type')} camera={s.get('camera_movement')} "
-                f"prompt=\"{s.get('visual_prompt', '')[:100]}...\""
-                for s in prev_scenes_context
-            )
-            context_block = f"\n\nPREVIOUS SCENES (maintain visual continuity, do NOT repeat these):\n{prev_summary}\n"
-        
-        sys_inst = f"""You are an Elite Executive Video Director. Segment the timestamped script into sequential visual scenes.
-LOCKED CHARACTERS:\\n{char_refs}\\nLOCKED LOCATIONS:\\n{loc_refs}
-AVAILABLE SFX LIBRARY:\\n{sfx_refs}
+        for chunk in chunks:
+            chunk_idx = chunk['chunk_index']
+            chunk_words = chunk['words']
+            
+            if total_chunks > 1:
+                print(f"    → [{provider.upper()}] Chunk {chunk_idx+1}/{total_chunks} "
+                      f"[{chunk['start_time']:.1f}s - {chunk['end_time']:.1f}s]...")
+            
+            # Build context carryover from previous chunk
+            context_block = ""
+            if prev_scenes_context:
+                prev_summary = "\n".join(
+                    f"  Scene {s.get('scene_id')}: [{s.get('start_time')}s-{s.get('end_time')}s] "
+                    f"type={s.get('scene_type')} "
+                    f"prompt=\"{s.get('visual_prompt', '')[:100]}...\""
+                    for s in prev_scenes_context
+                )
+                context_block = f"\n\nPREVIOUS SCENES (maintain visual continuity, do NOT repeat these):\n{prev_summary}\n"
+            
+            sys_inst = f"""You are an Elite Executive Video Director. Segment the timestamped script into sequential visual scenes.
+LOCKED CHARACTERS:\n{char_refs}\nLOCKED LOCATIONS:\n{loc_refs}
+AVAILABLE SFX LIBRARY:\n{sfx_refs}
 
 RULES:
 1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
@@ -339,58 +459,78 @@ RULES:
 
 9. SINGLE ACTION RULE : An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
 {context_block}"""
-        
-        # Format only this chunk's transcript
-        fmt_input = "\\n".join(f"[{w['start']}s - {w['end']}s]: {w['word']}" for w in chunk_words)
-        user_content = f"Story (full narrative for context):\\n{story_text}\\n\\nTranscript (generate scenes ONLY for this section):\\n{fmt_input}"
-        
-        # Director Pass ALWAYS uses Gemini — DeepSeek overflows on complex schemas
-        # with long visual_prompt strings and nested character/location arrays.
-        result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
-        
-        chunk_scenes = result.get("scenes", [])
-        
-        global_style = "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
-        
-        # Renumber scene_ids to be globally sequential and inject the global style
-        for s in chunk_scenes:
-            s["scene_id"] = scene_counter
-            vp = s.get("visual_prompt", "")
-            vp_clean = vp.replace("[", "").replace("]", "")
-            s["visual_prompt"] = f"{global_style}, {vp_clean}, no text box"
-            start_t = s.get("start_time", 0.0)
-            end_t = s.get("end_time", 0.0)
-            s["duration"] = round(end_t - start_t, 3)
             
-            raw_sfx = s.get("sfx_id", "none")
-            raw_prompt = s.get("sfx_prompt", "none")
+            # Format only this chunk's transcript
+            fmt_input = "\n".join(f"[{w['start']}s - {w['end']}s]: {w['word']}" for w in chunk_words)
+            user_content = f"Story (full narrative for context):\n{story_text}\n\nTranscript (generate scenes ONLY for this section):\n{fmt_input}"
             
-            is_valid_sfx = raw_sfx and str(raw_sfx).lower() not in ["none", "null", ""]
-            is_valid_prompt = raw_prompt and str(raw_prompt).lower() not in ["none", "null", ""]
-            
-            if is_valid_sfx:
-                sfx_key = str(raw_sfx).strip().lower()
-                s["sfx_id"] = sfx_key
-                
-                # If this is a new sound effect proposed by AI, register it!
-                if is_valid_prompt and sfx_key not in sfx_library:
-                    sfx_library[sfx_key] = str(raw_prompt).strip()
-                    new_sfx_added[sfx_key] = str(raw_prompt).strip()
+            if provider == "gemini":
+                result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
             else:
-                s["sfx_id"] = None
+                result = _call_together_deepseek(sys_inst, user_content, schema)
                 
-            if "sfx_prompt" in s:
-                del s["sfx_prompt"]
+            chunk_scenes = result.get("scenes", [])
+            
+            global_style = "Studio Ghibli animation style, dramatic cinematic lighting, lush vibrant colors, beautiful anime background, masterpiece, highly detailed"
+            
+            # Renumber scene_ids to be globally sequential and inject the global style
+            for s in chunk_scenes:
+                s["scene_id"] = scene_counter
+                vp = s.get("visual_prompt", "")
+                vp_clean = vp.replace("[", "").replace("]", "")
+                s["visual_prompt"] = f"{global_style}, {vp_clean}, no text box"
+                start_t = s.get("start_time", 0.0)
+                end_t = s.get("end_time", 0.0)
+                s["duration"] = round(end_t - start_t, 3)
                 
-            scene_counter += 1
+                raw_sfx = s.get("sfx_id", "none")
+                raw_prompt = s.get("sfx_prompt", "none")
+                
+                is_valid_sfx = raw_sfx and str(raw_sfx).lower() not in ["none", "null", ""]
+                is_valid_prompt = raw_prompt and str(raw_prompt).lower() not in ["none", "null", ""]
+                
+                if is_valid_sfx:
+                    sfx_key = str(raw_sfx).strip().lower()
+                    s["sfx_id"] = sfx_key
+                    
+                    # If this is a new sound effect proposed by AI, register it!
+                    if is_valid_prompt and sfx_key not in active_sfx_lib:
+                        active_sfx_lib[sfx_key] = str(raw_prompt).strip()
+                        new_sfx_added[sfx_key] = str(raw_prompt).strip()
+                else:
+                    s["sfx_id"] = None
+                    
+                if "sfx_prompt" in s:
+                    del s["sfx_prompt"]
+                    
+                scene_counter += 1
+            
+            all_scenes.extend(chunk_scenes)
+            
+            # Save last 2 scenes for context carryover to next chunk
+            prev_scenes_context = chunk_scenes[-2:] if len(chunk_scenes) >= 2 else chunk_scenes[:]
+            
+            if total_chunks > 1:
+                print(f"      ✅ Got {len(chunk_scenes)} scenes (total so far: {len(all_scenes)})")
+                
+        return all_scenes, new_sfx_added, active_sfx_lib
+
+    all_scenes = []
+    new_sfx_added = {}
+    
+    try:
+        gemini_client = get_gemini_client()
+        all_scenes, new_sfx_added, sfx_library = _run_all_chunks(provider="gemini", client=gemini_client)
+    except Exception as gemini_err:
+        print(f"\n  ⚠️ Gemini failed during Director Pass: {gemini_err}")
+        print("  🗑️ Scrapping all partial scenes generated by Gemini.")
+        print("  🔄 Restarting Director Pass cleanly from Chunk 1 using DeepSeek (Together AI)...\n")
         
-        all_scenes.extend(chunk_scenes)
-        
-        # Save last 2 scenes for context carryover to next chunk
-        prev_scenes_context = chunk_scenes[-2:] if len(chunk_scenes) >= 2 else chunk_scenes[:]
-        
-        if total_chunks > 1:
-            print(f"      ✅ Got {len(chunk_scenes)} scenes (total so far: {len(all_scenes)})")
+        if not os.environ.get("TOGETHER_API_KEY"):
+            print("  ⛔ TOGETHER_API_KEY not found in environment. Cannot execute DeepSeek fallback.")
+            raise gemini_err
+            
+        all_scenes, new_sfx_added, sfx_library = _run_all_chunks(provider="deepseek")
     
     # Auto-register newly proposed sound effects into master sfx library
     if new_sfx_added and sfx_lib_path:
@@ -490,17 +630,23 @@ The prompt should describe the instruments, tempo, and mood. The user will use t
     )
     
     try:
+        client = get_gemini_client()
         result = _call_gemini_with_retry(client, sys_inst, story_text, schema)
-        
-        import json
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=4)
-            
-        print("  ✅ Simplified Music Pass complete.")
-        return True
     except Exception as e:
-        print(f"  ❌ Error in Music Pass: {e}")
-        return False
+        print(f"\n  ⚠️ Gemini failed during Music Pass: {e}")
+        if os.environ.get("TOGETHER_API_KEY"):
+            print("  🔄 Scrapping and restarting Music Pass using DeepSeek (Together AI)...")
+            result = _call_together_deepseek(sys_inst, story_text, schema)
+        else:
+            print(f"  ❌ Error in Music Pass: {e}")
+            return False
+            
+    import json
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=4)
+        
+    print("  ✅ Simplified Music Pass complete.")
+    return True
 
 def generate_blueprints(project_dir, is_short=False):
     """
@@ -638,11 +784,19 @@ RULES:
         required=["scenes"]
     )
     
-    user_content = f"Numbered Hindi Story:\\n{fmt_input}"
-    client = get_gemini_client()
+    user_content = f"Numbered Hindi Story:\n{fmt_input}"
     
     print("    -> Sending story to AI for semantic mapping...")
-    result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
+    try:
+        client = get_gemini_client()
+        result = _call_gemini_with_retry(client, sys_inst, user_content, schema)
+    except Exception as e:
+        print(f"\n  ⚠️ Gemini failed during Hindi Semantic Mapping: {e}")
+        if os.environ.get("TOGETHER_API_KEY"):
+            print("  🔄 Scrapping and restarting Hindi Semantic Mapping using DeepSeek (Together AI)...")
+            result = _call_together_deepseek(sys_inst, user_content, schema)
+        else:
+            raise e
         
     ai_scenes = result.get("scenes", [])
     
