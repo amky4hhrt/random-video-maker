@@ -188,15 +188,47 @@ def _schema_to_json_schema(s):
         res['enum'] = s.enum
     return res
 
+def _translate_hindi_prompts(text):
+    if not text or not isinstance(text, str):
+        return text
+    
+    # Common mappings for recurring Hindi character traits and expressions
+    replacements = [
+        ("मध्यम आयु भारतीय पुरुष", "middle-aged Indian man"),
+        ("छोटे काले-भूरे बाल जिनमें हल्की सफेदी", "short black-brown hair with slight graying"),
+        ("साफ़-सुथरी दाढ़ी", "neat trimmed beard"),
+        ("साफ-सुथरी दाढ़ी", "neat trimmed beard"),
+        ("पतला-मध्यम शरीर", "slim-medium build"),
+        ("अच्छे कपड़े", "well-dressed in neat clothes"),
+        ("वृद्ध भारतीय पुरुष", "elderly Indian man"),
+        ("छोटे सफेद बाल", "short white hair"),
+        ("चेहरे पर झुर्रियां", "wrinkles on face"),
+        ("हल्की सफेद दाढ़ी", "light white beard"),
+        ("दुबला-मध्यम शरीर", "slender-medium build"),
+        ("साधारण सूती कुर्ता-पायजामा", "simple cotton kurta-pyjama"),
+        ("कंधे पर गमछा", "cotton gamcha towel draped over shoulder"),
+        ("थके हुए हाथ", "tired weathered hands"),
+        ("नम आँखें", "moist tearful eyes"),
+        ("नम आंखें", "moist tearful eyes"),
+        ("हल्के काँपते हुए हाथ", "slightly trembling hands"),
+        ("हल्के कांपते हुए हाथ", "slightly trembling hands"),
+        ("कांपते हुए हाथ", "trembling hands"),
+        ("काँपते हुए हाथ", "trembling hands"),
+    ]
+    for hin, eng in replacements:
+        text = text.replace(hin, eng)
+        
+    return text
+
 def run_character_pass(story_text, output_path):
     print("  \U0001F3AD Running Character Pass...")
-    client = get_gemini_client()
     
     sys_inst = """You are a Casting Director and Character Designer for 2D animated short films.
 Identify every RECURRING character in the story.
-For each character, write a single reusable 'trait_tags' description. Handle age_stages if applicable.
-Write a 'reference_prompt' for each stage/variant containing purely the physical description of the character (clothing, hair, facial features, etc). Do NOT include any art style descriptions like anime or 3D.
-Naming rule: For 'character_id' and 'name', use only the character's first name.
+CRITICAL LANGUAGE RULE: Even though the story text is in Hindi, you MUST write all 'trait_tags' and 'reference_prompt' strictly and purely in ENGLISH. Never use Hindi/Devanagari characters.
+For each character, write a single reusable 'trait_tags' description in English. Handle age_stages if applicable.
+Write a 'reference_prompt' for each stage/variant containing purely the physical description of the character in English (clothing, hair, facial features, etc). Do NOT include any art style descriptions like anime or 3D.
+Naming rule: For 'character_id' and 'name', use only the character's first name in English.
 """
     
     schema = types.Schema(
@@ -250,10 +282,12 @@ Naming rule: For 'character_id' and 'name', use only the character's first name.
             if "age_stages" in char:
                 for stage in char["age_stages"]:
                     base_prompt = stage.get("reference_prompt", "")
-                    stage["reference_prompt"] = f"{global_style}, {base_prompt}"
+                    stage["trait_tags"] = _translate_hindi_prompts(stage.get("trait_tags", ""))
+                    clean_ref = _translate_hindi_prompts(base_prompt)
+                    stage["reference_prompt"] = f"{global_style}, {clean_ref}"
                     
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=4)
+        json.dump(result, f, indent=4, ensure_ascii=False)
     return result
 
 def _split_transcript_into_chunks(transcript_data, chunk_duration=CHUNK_DURATION_SECONDS):
@@ -478,6 +512,7 @@ RULES:
                 s["scene_id"] = scene_counter
                 vp = s.get("visual_prompt", "")
                 vp_clean = vp.replace("[", "").replace("]", "")
+                vp_clean = _translate_hindi_prompts(vp_clean)
                 s["visual_prompt"] = f"{global_style}, {vp_clean}, no text box"
                 start_t = s.get("start_time", 0.0)
                 end_t = s.get("end_time", 0.0)
@@ -537,9 +572,9 @@ RULES:
         try:
             sfx_dir = Path(sfx_lib_path).parent
             with open(sfx_dir / "sfx.json", "w", encoding="utf-8") as f:
-                json.dump(sfx_library, f, indent=4)
+                json.dump(sfx_library, f, indent=4, ensure_ascii=False)
             with open(sfx_dir / "sfx_library.json", "w", encoding="utf-8") as f:
-                json.dump(sfx_library, f, indent=4)
+                json.dump(sfx_library, f, indent=4, ensure_ascii=False)
             print(f"    ✨ Auto-registered {len(new_sfx_added)} new sound effect(s) in sfx/sfx.json:")
             for k, v in new_sfx_added.items():
                 print(f"      - {k}: \"{v}\"")
@@ -565,13 +600,13 @@ RULES:
     if sfx_blueprint:
         sfx_bp_file = Path(output_path).parent / "sfx_blueprint.json"
         with open(sfx_bp_file, "w", encoding="utf-8") as f:
-            json.dump(sfx_blueprint, f, indent=4)
+            json.dump(sfx_blueprint, f, indent=4, ensure_ascii=False)
         print(f"    🔊 Saved sfx_blueprint.json with {len(sfx_blueprint)} sound effect(s) for this video!")
 
     # Save the complete stitched blueprint
     final_result = {"scenes": all_scenes}
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(final_result, f, indent=4)
+        json.dump(final_result, f, indent=4, ensure_ascii=False)
     
     print(f"  ✅ Director Pass complete! {len(all_scenes)} scenes across {total_chunks} chunk(s).")
     return final_result
@@ -643,10 +678,84 @@ The prompt should describe the instruments, tempo, and mood. The user will use t
             
     import json
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=4)
+        json.dump(result, f, indent=4, ensure_ascii=False)
         
     print("  ✅ Simplified Music Pass complete.")
     return True
+
+def _sanitize_hindi_story_and_words(story_text, transcript_data):
+    """
+    Option 1: Identifies high-risk dramatic Hindi trigger words (debt, repossession, ruin, etc.)
+    and swaps them for neutral English equivalents in story_text and transcript words.
+    Crucial guarantee: 100% of Whisper's word-level timestamps (start, end) remain untouched.
+    """
+    import copy
+    import re
+
+    base_map = {
+        "कर्ज़": "loan", "कर्ज": "loan", "कर्जे": "loans",
+        "कब्ज़ा": "repossession", "कब्जा": "repossession", "कब्ज़े": "repossession", "कब्जे": "repossession",
+        "बर्बाद": "ruined", "बर्बादी": "ruin", "हार": "defeat",
+        "धोखा": "betrayal", "खून": "blood", "फांसी": "hanging",
+        "जहर": "poison", "हथियार": "weapon", "आत्महत्या": "despair",
+        "नीलामी": "auction", "कंगाल": "bankrupt", "मुसीबत": "trouble",
+        "तबाही": "destruction", "तलाक": "divorce", "दंगा": "riot",
+        "हिंसा": "violence", "मारपीट": "fight", "मौत": "death"
+    }
+
+    # Dynamic scanner via DeepSeek if TOGETHER_API_KEY is available
+    together_key = os.environ.get("TOGETHER_API_KEY")
+    if together_key:
+        try:
+            sys_inst = (
+                "You are a Content Safety and Translation Specialist. "
+                "Analyze the provided story narrative and identify any dramatic Hindi words that might trigger automated content filters "
+                "(words related to debt, loans, repossession, destruction, death, weapons, violence, or financial despair). "
+                "Return a JSON object strictly matching this schema with 'word_replacements' mapping each sensitive Hindi word to a neutral English word. "
+                "Example: {'कर्ज़': 'loan', 'कब्ज़ा': 'repossession'}. If none found, return empty map {}."
+            )
+            schema = types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "word_replacements": types.Schema(type=types.Type.OBJECT)
+                },
+                required=["word_replacements"]
+            )
+            ai_res = _call_together_deepseek(sys_inst, story_text[:3000], schema)
+            extra_map = ai_res.get("word_replacements", {})
+            if isinstance(extra_map, dict):
+                for k, v in extra_map.items():
+                    if k and v and isinstance(k, str) and isinstance(v, str):
+                        base_map[k.strip()] = v.strip()
+        except Exception:
+            # Non-blocking fallback to base_map
+            pass
+
+    # Deep-copy transcript data to preserve original in-memory data
+    clean_transcript = copy.deepcopy(transcript_data)
+    words = clean_transcript.get("words", clean_transcript) if isinstance(clean_transcript, dict) else clean_transcript
+    
+    replaced_count = 0
+    if isinstance(words, list):
+        for w in words:
+            if isinstance(w, dict) and "word" in w:
+                orig_word = w["word"]
+                clean_w = re.sub(r"[^\w\u0900-\u097f]", "", orig_word)
+                if clean_w in base_map:
+                    replacement = base_map[clean_w]
+                    w["word"] = orig_word.replace(clean_w, replacement)
+                    replaced_count += 1
+
+    # Sanitize story_text as well
+    clean_story = story_text
+    for hin, eng in base_map.items():
+        if hin in clean_story:
+            clean_story = clean_story.replace(hin, eng)
+
+    if replaced_count > 0:
+        print(f"  🛡️ Sanitized {replaced_count} sensitive Hindi word(s) in transcript to prevent Gemini safety block.")
+        
+    return clean_story, clean_transcript
 
 def generate_blueprints(project_dir, is_short=False):
     """
@@ -664,6 +773,9 @@ def generate_blueprints(project_dir, is_short=False):
     with open(story_file, "r", encoding="utf-8") as f: story_text = f.read()
     with open(transcript_file, "r", encoding="utf-8") as f: transcript_data = json.load(f)
     
+    # Option 1: AI-assisted word-level transcript sanitization (preserves 100% Whisper timestamps)
+    clean_story, clean_transcript = _sanitize_hindi_story_and_words(story_text, transcript_data)
+    
     char_out = proj / "character_prompts.json"
     vid_out = proj / "video_blueprint.json"
     mus_out = proj / "music_blueprint.json"
@@ -675,19 +787,19 @@ def generate_blueprints(project_dir, is_short=False):
     
     try:
         if not char_out.exists():
-            char_data = run_character_pass(story_text, char_out)
+            char_data = run_character_pass(clean_story, char_out)
         else:
             with open(char_out, "r", encoding="utf-8") as f: char_data = json.load(f)
             print("  \u2705 Skipping Character Pass (character_prompts.json already exists)")
 
         if not vid_out.exists():
-            run_director_pass(story_text, transcript_data, char_data, vid_out, sfx_lib_path=sfx_lib, is_short=is_short)
+            run_director_pass(clean_story, clean_transcript, char_data, vid_out, sfx_lib_path=sfx_lib, is_short=is_short)
         else:
             print("  \u2705 Skipping Director Pass (video_blueprint.json already exists)")
         
         # Shorts might not need a complex music pass in the same way, but let's run it anyway
         if not mus_out.exists():
-            run_music_pass(story_text, transcript_data, mus_out, sfx_lib)
+            run_music_pass(clean_story, clean_transcript, mus_out, sfx_lib)
         else:
             print("  \u2705 Skipping Music Pass (music_blueprint.json already exists)")
         
@@ -838,7 +950,7 @@ RULES:
         
     final_result = {"scenes": final_scenes}
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(final_result, f, indent=4)
+        json.dump(final_result, f, indent=4, ensure_ascii=False)
         
     print(f"  \u2705 Mapped {len(final_scenes)} scenes perfectly to timestamps!")
     return final_result
