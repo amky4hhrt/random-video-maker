@@ -9,61 +9,102 @@ from google.genai import types
 
 CHUNK_DURATION_SECONDS = 180  # 3 minutes per chunk for Director Pass
 
-# Assuming the user will set GEMINI_API_KEY in environment before running
-def get_gemini_client():
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("\u274C Error: GEMINI_API_KEY environment variable not set.")
-    return genai.Client(api_key=api_key)
+_FREE_KEY_EXHAUSTED = False
 
-def _call_gemini_with_retry(client, system_instruction, user_content, response_schema, max_retries=5):
-    current_sleep = 3
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model="gemini-flash-latest",
-                contents=user_content,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=response_schema,
-                    max_output_tokens=65536,
-                    safety_settings=[
-                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-                        types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-                    ]
-                )
-            )
-            
-            # Immediately try to parse. If text is missing or invalid, it throws.
+def _get_active_gemini_keys():
+    """Returns an ordered list of (key_name, api_key) prioritizing GEMINI_API_KEY_FREE."""
+    global _FREE_KEY_EXHAUSTED
+    keys = []
+    free_key = os.environ.get("GEMINI_API_KEY_FREE")
+    paid_key = os.environ.get("GEMINI_API_KEY")
+    
+    if free_key and not _FREE_KEY_EXHAUSTED:
+        keys.append(("GEMINI_API_KEY_FREE", free_key))
+    if paid_key:
+        keys.append(("GEMINI_API_KEY", paid_key))
+    elif not keys and free_key:
+        # If paid_key is not set at all, still allow free_key even if previously failed
+        keys.append(("GEMINI_API_KEY_FREE", free_key))
+        
+    if not keys:
+        raise ValueError("\u274C Neither GEMINI_API_KEY_FREE nor GEMINI_API_KEY is set in environment.")
+    return keys
+
+def get_gemini_client():
+    """Returns a client for the top priority available Gemini key."""
+    keys = _get_active_gemini_keys()
+    name, key = keys[0]
+    return genai.Client(api_key=key)
+
+def _call_gemini_with_retry(client=None, system_instruction=None, user_content=None, response_schema=None, max_retries=3):
+    global _FREE_KEY_EXHAUSTED
+    candidate_keys = _get_active_gemini_keys()
+    last_err = None
+
+    for idx, (key_label, api_key) in enumerate(candidate_keys):
+        current_client = genai.Client(api_key=api_key)
+        key_retries = max_retries if key_label == "GEMINI_API_KEY_FREE" else 3
+        current_sleep = 2
+        
+        for attempt in range(key_retries):
             try:
-                if response and response.text:
-                    import json
-                    return json.loads(response.text)
-                else:
-                    feedback = getattr(response, "prompt_feedback", None)
-                    print(f"\n  ⚠️ Gemini returned empty/blocked response (feedback: {feedback})")
-                    raise ValueError("PROHIBITED_CONTENT: Empty or blocked response from Gemini API")
+                response = current_client.models.generate_content(
+                    model="gemini-flash-latest",
+                    contents=user_content,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        response_mime_type="application/json",
+                        response_schema=response_schema,
+                        max_output_tokens=65536,
+                        safety_settings=[
+                            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+                        ]
+                    )
+                )
+                
+                # Immediately try to parse. If text is missing or invalid, it throws.
+                try:
+                    if response and response.text:
+                        import json
+                        return json.loads(response.text)
+                    else:
+                        feedback = getattr(response, "prompt_feedback", None)
+                        print(f"\n  ⚠️ Gemini returned empty/blocked response (feedback: {feedback})")
+                        raise ValueError("PROHIBITED_CONTENT: Empty or blocked response from Gemini API")
+                except Exception as e:
+                    err_str = str(e)
+                    if "PROHIBITED_CONTENT" in err_str:
+                        raise e
+                    print(f"\n  ❌ FATAL: Could not parse response text.\n  Raw Response Object: {response}\n")
+                    raise ValueError(f"Empty response from API: {e}")
+                    
             except Exception as e:
                 err_str = str(e)
-                if "PROHIBITED_CONTENT" in err_str:
-                    raise e
-                print(f"\n  ❌ FATAL: Could not parse response text.\n  Raw Response Object: {response}\n")
-                raise ValueError(f"Empty response from API: {e}")
-                
-        except Exception as e:
-            err_str = str(e)
-            if "Empty response" in err_str or "response.text" in err_str or "PROHIBITED_CONTENT" in err_str or "block_reason" in err_str:
-                print("  ⛔ Google Gemini rejected prompt due to automated content filter.")
-                raise ValueError(f"GEMINI_SAFETY_BLOCK: {err_str}")
-                
-            if attempt == max_retries - 1:
-                raise e
-            print(f"  ⚠️ Attempt {attempt + 1} failed. Retrying in {current_sleep}s... ({e})")
-            time.sleep(current_sleep)
-            current_sleep *= 2
+                # If Google safety filter blocked it, failover immediately without wasting retries
+                if "Empty response" in err_str or "response.text" in err_str or "PROHIBITED_CONTENT" in err_str or "block_reason" in err_str:
+                    print("  ⛔ Google Gemini rejected prompt due to automated content filter.")
+                    raise ValueError(f"GEMINI_SAFETY_BLOCK: {err_str}")
+                    
+                last_err = e
+                if attempt < key_retries - 1:
+                    print(f"  ⚠️ [{key_label}] Attempt {attempt + 1}/{key_retries} failed: {e}. Retrying in {current_sleep}s...")
+                    time.sleep(current_sleep)
+                    current_sleep *= 2
+                else:
+                    print(f"  ⚠️ [{key_label}] All {key_retries} attempts failed: {e}")
+
+        # If key_label was GEMINI_API_KEY_FREE and failed all retries, switch to paid GEMINI_API_KEY
+        if key_label == "GEMINI_API_KEY_FREE":
+            _FREE_KEY_EXHAUSTED = True
+            if idx + 1 < len(candidate_keys):
+                next_label = candidate_keys[idx + 1][0]
+                print(f"  🔄 GEMINI_API_KEY_FREE unavailable or exhausted after {key_retries} attempts. Switching to {next_label}...")
+
+    # If all keys failed, raise the last exception to trigger DeepSeek fallback
+    raise last_err if last_err else ValueError("All Gemini API keys failed.")
 
 def _clean_and_parse_json(raw_text):
     import re

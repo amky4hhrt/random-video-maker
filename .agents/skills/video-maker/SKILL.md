@@ -150,6 +150,7 @@ python3 main-short.py
 ```
 
 ### Preflight / Environment Requirements:
-* `GEMINI_API_KEY`: Required for Gemini Flash.
+* `GEMINI_API_KEY_FREE`: *(Optional)* Free-tier Gemini API key. Attempted first with 3 retries for ₹0 cost.
+* `GEMINI_API_KEY`: Standard / paid Gemini API key. Used as automatic failover if free key is exhausted or unavailable.
 * `TOGETHER_API_KEY`: Required for DeepSeek fallback and dynamic word sanitization.
 * `ffmpeg`: Must be installed on the system path with `libx264` and filter support.
