@@ -417,23 +417,69 @@ def _split_transcript_into_chunks(transcript_data, chunk_duration=CHUNK_DURATION
     return chunks
 
 
+def _load_and_sync_sfx_library(sfx_lib_path=None):
+    """
+    Loads master SFX library from sfx/sfx.json (single source of truth).
+    Auto-discovers any user-uploaded audio files (.mp3, .wav, .ogg, .flac) in sfx/
+    and registers them so the AI Director knows they exist.
+    """
+    sfx_library = {}
+    if not sfx_lib_path:
+        return sfx_library
+        
+    p = Path(sfx_lib_path)
+    sfx_dir = p if p.is_dir() else p.parent
+    sfx_file = sfx_dir / "sfx.json"
+    
+    # Fallback: if sfx.json doesn't exist yet, check legacy sfx_library.json
+    if not sfx_file.exists():
+        legacy_file = sfx_dir / "sfx_library.json"
+        if legacy_file.exists():
+            sfx_file = legacy_file
+            
+    if sfx_file.exists():
+        try:
+            with open(sfx_file, "r", encoding="utf-8") as f:
+                sfx_library = json.load(f)
+        except Exception as e:
+            print(f"  ⚠️ Could not load SFX library: {e}")
+            sfx_library = {}
+
+    # Auto-Discovery: Scan sfx_dir for any user-uploaded audio files
+    audio_exts = (".wav", ".mp3", ".ogg", ".flac", ".m4a")
+    newly_discovered = False
+    
+    if sfx_dir.exists():
+        try:
+            for item in sfx_dir.iterdir():
+                if item.is_file() and item.suffix.lower() in audio_exts:
+                    asset_id = item.stem.lower().strip()
+                    if asset_id not in sfx_library:
+                        human_desc = asset_id.replace("_", " ").capitalize()
+                        sfx_library[asset_id] = f"User uploaded sound effect: {human_desc}"
+                        newly_discovered = True
+                        print(f"    🔊 Auto-discovered uploaded sound in sfx/: {asset_id} (\"{sfx_library[asset_id]}\")")
+        except Exception as e:
+            print(f"  ⚠️ Error scanning sfx directory for audio files: {e}")
+
+    # If any audio files were auto-discovered, save immediately to canonical sfx/sfx.json
+    if newly_discovered:
+        canonical_file = sfx_dir / "sfx.json"
+        try:
+            with open(canonical_file, "w", encoding="utf-8") as f:
+                json.dump(sfx_library, f, indent=4, ensure_ascii=False)
+            print(f"    ✨ Auto-registered new sound file(s) into sfx/sfx.json")
+        except Exception as e:
+            print(f"  ⚠️ Could not save auto-discovered SFX: {e}")
+            
+    return sfx_library
+
+
 def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_lib_path=None, is_short=False):
     print("  \U0001F3AC Running Director Pass...")
     
-    # Load SFX library if provided (checks both sfx_library.json and sfx.json)
-    sfx_library = {}
-    if sfx_lib_path:
-        p = Path(sfx_lib_path)
-        if not p.exists():
-            alt = p.parent / "sfx.json" if p.name == "sfx_library.json" else p.parent / "sfx_library.json"
-            if alt.exists():
-                p = alt
-        if p.exists():
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    sfx_library = json.load(f)
-            except Exception as e:
-                print(f"  ⚠️ Could not load SFX library: {e}")
+    # Load SFX library (single canonical sfx/sfx.json + auto-discovered audio files)
+    sfx_library = _load_and_sync_sfx_library(sfx_lib_path)
             
     sfx_refs = "\\n".join(
         f"- {k}: {v}" for k, v in sfx_library.items()
@@ -658,14 +704,29 @@ RULES:
             
         all_scenes, new_sfx_added, sfx_library = _run_all_chunks(provider="deepseek")
     
-    # Auto-register newly proposed sound effects into master sfx library
+    # Auto-register newly proposed sound effects into master sfx library (safe read-merge-write)
     if new_sfx_added and sfx_lib_path:
         try:
-            sfx_dir = Path(sfx_lib_path).parent
-            with open(sfx_dir / "sfx.json", "w", encoding="utf-8") as f:
-                json.dump(sfx_library, f, indent=4, ensure_ascii=False)
-            with open(sfx_dir / "sfx_library.json", "w", encoding="utf-8") as f:
-                json.dump(sfx_library, f, indent=4, ensure_ascii=False)
+            p = Path(sfx_lib_path)
+            sfx_dir = p if p.is_dir() else p.parent
+            canonical_file = sfx_dir / "sfx.json"
+            
+            # Re-read existing disk state to guarantee zero overwrite of manual additions
+            disk_sfx = {}
+            if canonical_file.exists():
+                try:
+                    with open(canonical_file, "r", encoding="utf-8") as f:
+                        disk_sfx = json.load(f)
+                except Exception:
+                    disk_sfx = {}
+                    
+            # Merge: preserve all disk sounds, plus active library and new additions
+            disk_sfx.update(sfx_library)
+            disk_sfx.update(new_sfx_added)
+            sfx_library = disk_sfx
+            
+            with open(canonical_file, "w", encoding="utf-8") as f:
+                json.dump(disk_sfx, f, indent=4, ensure_ascii=False)
             print(f"    ✨ Auto-registered {len(new_sfx_added)} new sound effect(s) in sfx/sfx.json:")
             for k, v in new_sfx_added.items():
                 print(f"      - {k}: \"{v}\"")
@@ -877,7 +938,7 @@ def generate_blueprints(project_dir, is_short=False):
     # Paths to global libraries
     base_dir = proj.parent
     mus_lib = base_dir / "music" / "music_library.json"
-    sfx_lib = base_dir / "sfx" / "sfx_library.json"
+    sfx_lib = base_dir / "sfx" / "sfx.json"
     
     try:
         if not char_out.exists():
@@ -1074,7 +1135,7 @@ def generate_hindi_blueprints(eng_visual_dir, hin_audio_dir, is_short=False):
     
     base_dir = hin_proj.parent
     mus_lib = base_dir / "music" / "music_library.json"
-    sfx_lib = base_dir / "sfx" / "sfx_library.json"
+    sfx_lib = base_dir / "sfx" / "sfx.json"
     
     try:
         if not hin_vid_out.exists():
