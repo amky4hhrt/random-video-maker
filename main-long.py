@@ -222,17 +222,6 @@ def main():
     trans = HIN_ASSETS / "transcript.json"
     
     needs_blueprints = not (vid_bp.exists() and mus_bp.exists() and char_json.exists() and trans.exists())
-    
-    needs_manual_review = True
-    if vid_bp.exists():
-        with open(vid_bp, "r") as f:
-            try:
-                bp_data = json.load(f)
-                if bp_data.get("manual_review_completed"):
-                    needs_manual_review = False
-            except json.JSONDecodeError:
-                pass
-                
     images_present = has_assets(str(HIN_ASSETS))
     
     if needs_blueprints:
@@ -261,62 +250,14 @@ def main():
             
         print("\n✅ STAGE 1 COMPLETE!")
         print("NEXT STEPS:")
-        print("1. Review character_prompts.json and video_blueprint.json")
+        print("1. Review character_prompts.json and video_blueprint.json (camera movements & transitions already assigned!)")
         print("2. Generate visual assets and save them in hindi_long_assets/ (e.g. 1.jpg, 2.mp4)")
         print("3. Generate a background music track using music_blueprint.json and save it in hindi_long_assets/")
         print("4. (Optional) Check sfx_blueprint.json: generate any needed SFX with ElevenLabs and save in sfx/")
-        print("5. Run this script again to proceed to Stage 2 (Manual Review)!")
+        print("5. Run this script again to render your video immediately!")
         
-    elif images_present and needs_manual_review:
-        print("\nSTAGE 2: Assign Effects & Transitions")
-        print("-" * 50)
-        
-        import select
-        
-        print("Do you want AI to decide effects (A) or do it Manually (M)? [A/M] (15s timeout): ", end="", flush=True)
-        choice = 'A'
-        
-        if sys.platform != 'win32':
-            i, o, e = select.select([sys.stdin], [], [], 15.0)
-            if i:
-                user_input = sys.stdin.readline().strip().upper()
-                if user_input in ['A', 'M']:
-                    choice = user_input
-            else:
-                print("\n⏳ 15-second timeout reached! Defaulting to 'A' (AI Vision Pass).")
-        else:
-            # Fallback for Windows
-            import time
-            import threading
-            def get_input(ret):
-                ret.append(input())
-            user_input_list = []
-            t = threading.Thread(target=get_input, args=(user_input_list,))
-            t.daemon = True
-            t.start()
-            t.join(15.0)
-            if t.is_alive():
-                print("\n⏳ 15-second timeout reached! Defaulting to 'A' (AI Vision Pass).")
-            elif user_input_list:
-                user_input = user_input_list[0].strip().upper()
-                if user_input in ['A', 'M']:
-                    choice = user_input
-        
-        if choice == 'A':
-            from py_files.vision_editor import run_vision_pass
-            if not run_vision_pass(str(HIN_ASSETS)):
-                print("❌ AI Vision Pass failed or was aborted.")
-                sys.exit(1)
-        else:
-            if not run_manual_review(str(vid_bp)):
-                print("❌ Manual Review failed or was aborted.")
-                sys.exit(1)
-            
-        print("\n✅ STAGE 2 COMPLETE! Proceeding to Stage 3 immediately...")
-        needs_manual_review = False
-
-    if images_present and not needs_manual_review:
-        print("\nSTAGE 3: Render (Images and Manual Review Confirmed)")
+    elif images_present:
+        print("\nSTAGE 2: Render (Assets Confirmed)")
         print("-" * 50)
         
         hin_final = HIN_OUT / "final_hi_long.mp4"

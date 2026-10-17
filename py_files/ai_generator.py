@@ -431,10 +431,22 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
                             )
                         ),
                         "visual_prompt": types.Schema(type=types.Type.STRING),
+                        "camera_movement": types.Schema(
+                            type=types.Type.STRING,
+                            enum=["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "zoom_in_left", "zoom_in_right", "static"]
+                        ),
+                        "transition_type": types.Schema(
+                            type=types.Type.STRING,
+                            enum=["cut", "dissolve", "fade_to_black"]
+                        ),
+                        "transition_duration": types.Schema(
+                            type=types.Type.NUMBER,
+                            description="0.0 for cut, 0.8 to 1.2 for dissolve or fade_to_black."
+                        ),
                         "sfx_id": types.Schema(type=types.Type.STRING, description="Existing sfx_id from library if good match, OR new snake_case ID (e.g. coins_drop_01) if proposing new sound, or 'none' if no sound needed."),
                         "sfx_prompt": types.Schema(type=types.Type.STRING, description="If proposing a new sfx_id, write a rich sound effect prompt for ElevenLabs. If reusing existing sound or if sfx_id is 'none', write 'none'."),
                     },
-                    required=["scene_id", "start_time", "end_time", "scene_type", "visual_prompt"]
+                    required=["scene_id", "start_time", "end_time", "scene_type", "visual_prompt", "camera_movement", "transition_type"]
                 )
             )
         },
@@ -492,6 +504,19 @@ RULES:
 - If the scene is ordinary dialogue or quiet and does NOT need a sound effect, set 'sfx_id' to "none" and 'sfx_prompt' to "none". Most scenes should NOT have sound effects—reserve them for key dramatic moments.
 
 9. SINGLE ACTION RULE : An image generator can only render a single frozen moment in time. Your visual_prompt MUST NOT describe sequential actions or multiple events (e.g. "he throws a punch and turns around"). Describe exactly ONE static snapshot using present progressive tense (e.g. "he is in the middle of throwing a punch, arm extended mid-air"). Avoid describing sequences.
+
+7. CINEMATOGRAPHY (CAMERA MOVEMENT & TRANSITIONS):
+- camera_movement: Choose one from ['push_in', 'push_out', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'zoom_in_left', 'zoom_in_right', 'static'].
+  * Close-up / portrait / emotional dialogue -> 'push_in' or 'zoom_in_left' / 'zoom_in_right'.
+  * Wide landscape / establishing scenery / departures -> 'push_out' or 'pan_left' / 'pan_right'.
+  * Walking, moving, looking across rooms -> 'pan_left' or 'pan_right'.
+  * High vertical objects or looking up/down -> 'tilt_up' or 'tilt_down'.
+  * CRITICAL ANTI-REPETITION RULE: Never use the exact same camera_movement twice in a row. Alternate movements to maintain dynamic cinema pacing.
+- transition_type: Choose from ['cut', 'dissolve', 'fade_to_black'].
+  * 'cut': Use for natural conversation and continuous action within the same scene/room (set transition_duration to 0.0).
+  * 'dissolve': Use when changing location, scene setting, or passing time (set transition_duration to 1.0).
+  * 'fade_to_black': Use for major chapter ends, flashbacks, or dramatic cliffhangers (set transition_duration to 1.0).
+- transition_duration: 0.0 for 'cut', 0.8 to 1.2 for 'dissolve' or 'fade_to_black'.
 {context_block}"""
             
             # Format only this chunk's transcript
@@ -517,6 +542,31 @@ RULES:
                 start_t = s.get("start_time", 0.0)
                 end_t = s.get("end_time", 0.0)
                 s["duration"] = round(end_t - start_t, 3)
+
+                # Camera Movement & Anti-Repetition Fallback
+                raw_cam = str(s.get("camera_movement", "")).lower().strip()
+                valid_cams = ["push_in", "push_out", "pan_left", "pan_right", "tilt_up", "tilt_down", "zoom_in_left", "zoom_in_right", "static"]
+                if raw_cam not in valid_cams:
+                    raw_cam = "push_in"
+
+                # Anti-repetition: if same as previous scene, alternate it!
+                if all_scenes and all_scenes[-1].get("camera_movement") == raw_cam:
+                    alternatives = [c for c in ["pan_right", "push_out", "pan_left", "zoom_in_left", "tilt_up", "push_in"] if c != raw_cam]
+                    raw_cam = alternatives[scene_counter % len(alternatives)]
+                s["camera_movement"] = raw_cam
+
+                # Transition validation
+                raw_trans = str(s.get("transition_type", "cut")).lower().strip()
+                if raw_trans not in ["cut", "dissolve", "fade_to_black"]:
+                    raw_trans = "cut"
+                s["transition_type"] = raw_trans
+                
+                raw_dur = s.get("transition_duration", 0.0)
+                try:
+                    raw_dur = float(raw_dur)
+                except (ValueError, TypeError):
+                    raw_dur = 0.0
+                s["transition_duration"] = raw_dur if raw_trans != "cut" else 0.0
                 
                 raw_sfx = s.get("sfx_id", "none")
                 raw_prompt = s.get("sfx_prompt", "none")
@@ -604,7 +654,10 @@ RULES:
         print(f"    🔊 Saved sfx_blueprint.json with {len(sfx_blueprint)} sound effect(s) for this video!")
 
     # Save the complete stitched blueprint
-    final_result = {"scenes": all_scenes}
+    final_result = {
+        "scenes": all_scenes,
+        "manual_review_completed": True
+    }
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(final_result, f, indent=4, ensure_ascii=False)
     
@@ -945,10 +998,14 @@ RULES:
             "camera_movement": src.get("camera_movement", "push_in"),
             "transition_type": src.get("transition_type", "cut"),
             "transition_duration": src.get("transition_duration", 0.0),
+            "duration": round(real_end - real_start, 3),
             "sfx_id": src.get("sfx_id", None)
         })
         
-    final_result = {"scenes": final_scenes}
+    final_result = {
+        "scenes": final_scenes,
+        "manual_review_completed": True
+    }
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(final_result, f, indent=4, ensure_ascii=False)
         

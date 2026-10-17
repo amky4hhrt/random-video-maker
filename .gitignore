@@ -11,6 +11,8 @@
 !sfx/*.json
 !music/
 !music/*.json
+!.agents/
+!.agents/**
 
 # Explictly ignore generated and heavy folders (just to be safe)
 english_long_assets/
