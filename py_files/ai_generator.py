@@ -45,9 +45,14 @@ def _call_gemini_with_retry(client=None, system_instruction=None, user_content=N
         current_client = genai.Client(api_key=api_key)
         key_retries = max_retries if key_label == "GEMINI_API_KEY_FREE" else 3
         current_sleep = 2
+        tier = "FREE" if key_label == "GEMINI_API_KEY_FREE" else "PAID"
         
         for attempt in range(key_retries):
             try:
+                if attempt == 0:
+                    print(f"    ✨ Running Gemini [{tier} TIER - {key_label}]...")
+                else:
+                    print(f"    ✨ Retrying Gemini [{tier} TIER - {key_label}] (attempt {attempt + 1}/{key_retries})...")
                 response = current_client.models.generate_content(
                     model="gemini-flash-latest",
                     contents=user_content,
@@ -90,18 +95,19 @@ def _call_gemini_with_retry(client=None, system_instruction=None, user_content=N
                     
                 last_err = e
                 if attempt < key_retries - 1:
-                    print(f"  ⚠️ [{key_label}] Attempt {attempt + 1}/{key_retries} failed: {e}. Retrying in {current_sleep}s...")
+                    print(f"  ⚠️ [{tier} - {key_label}] Attempt {attempt + 1}/{key_retries} failed: {e}. Retrying in {current_sleep}s...")
                     time.sleep(current_sleep)
                     current_sleep *= 2
                 else:
-                    print(f"  ⚠️ [{key_label}] All {key_retries} attempts failed: {e}")
+                    print(f"  ⚠️ [{tier} - {key_label}] All {key_retries} attempts failed: {e}")
 
         # If key_label was GEMINI_API_KEY_FREE and failed all retries, switch to paid GEMINI_API_KEY
         if key_label == "GEMINI_API_KEY_FREE":
             _FREE_KEY_EXHAUSTED = True
             if idx + 1 < len(candidate_keys):
                 next_label = candidate_keys[idx + 1][0]
-                print(f"  🔄 GEMINI_API_KEY_FREE unavailable or exhausted after {key_retries} attempts. Switching to {next_label}...")
+                next_tier = "FREE" if next_label == "GEMINI_API_KEY_FREE" else "PAID"
+                print(f"  🔄 GEMINI_API_KEY_FREE unavailable or exhausted after {key_retries} attempts. Switching to {next_label} [{next_tier} TIER]...")
 
     # If all keys failed, raise the last exception to trigger DeepSeek fallback
     raise last_err if last_err else ValueError("All Gemini API keys failed.")
@@ -559,7 +565,10 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
             chunk_words = chunk['words']
             
             if total_chunks > 1:
-                print(f"    → [{provider.upper()}] Chunk {chunk_idx+1}/{total_chunks} "
+                tier_suffix = ""
+                if provider.lower() == "gemini":
+                    tier_suffix = " (FREE)" if (os.environ.get("GEMINI_API_KEY_FREE") and not _FREE_KEY_EXHAUSTED) else " (PAID)"
+                print(f"    → [{provider.upper()}{tier_suffix}] Chunk {chunk_idx+1}/{total_chunks} "
                       f"[{chunk['start_time']:.1f}s - {chunk['end_time']:.1f}s]...")
             
             # Build context carryover from previous chunk
