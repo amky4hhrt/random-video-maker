@@ -268,14 +268,27 @@ def _translate_hindi_prompts(text):
     return text
 
 def run_character_pass(story_text, output_path):
-    print("  \U0001F3AD Running Character Pass...")
+    print("  🎭 Running Character & Location Pass...")
     
-    sys_inst = """You are a Casting Director and Character Designer for 2D animated short films.
-Identify every RECURRING character in the story.
-CRITICAL LANGUAGE RULE: Even though the story text is in Hindi, you MUST write all 'trait_tags' and 'reference_prompt' strictly and purely in ENGLISH. Never use Hindi/Devanagari characters.
-For each character, write a single reusable 'trait_tags' description in English. Handle age_stages if applicable.
-Write a 'reference_prompt' for each stage/variant containing purely the physical description of the character in English (clothing, hair, facial features, etc). Do NOT include any art style descriptions like anime or 3D.
-Naming rule: For 'character_id' and 'name', use only the character's first name in English.
+    sys_inst = """You are a Casting Director, Production Designer, and World Builder for cinematic 2D animated films.
+Analyze the story and identify:
+1. RECURRING CHARACTERS: Every major recurring character in the story.
+2. RECURRING LOCATIONS: The primary 3 to 6 recurring story locations (e.g. key shops, offices, homes, streets, or natural settings).
+
+CRITICAL LANGUAGE RULE: Even though the story text is in Hindi, you MUST write all 'trait_tags', 'reference_prompt', and 'anchor_tags' strictly and purely in ENGLISH. Never use Hindi/Devanagari characters.
+
+For Characters:
+- 'character_id' and 'name': Use only the character's first name in English.
+- 'trait_tags': A concise reusable English description of age, build, facial features, hair, and clothing.
+- 'reference_prompt': Pure physical visual description in English for image reference. Do NOT include art style descriptions.
+
+For Locations:
+- 'location_id': snake_case unique identifier (e.g. 'ramesh_cloth_shop', 'virender_office', 'crowded_market_street').
+- 'name': Clean title in English (e.g. "Ramesh's Cloth Shop").
+- 'anchor_tags': 3 to 5 signature, memorable visual anchors separated by commas. Include:
+  * Architecture & Materials (e.g. 'weathered dark teakwood shelves', 'rustic brick walls', 'marble floors')
+  * Signature Props (e.g. 'antique brass balance scale on wooden counter', 'stacked rolls of silk fabric')
+  * Ambient Lighting & Color Palette (e.g. 'warm afternoon sunlight pouring through storefront window, dusty atmospheric air')
 """
     
     schema = types.Schema(
@@ -305,8 +318,23 @@ Naming rule: For 'character_id' and 'name', use only the character's first name 
                     required=["character_id", "name", "age_stages"]
                 )
             ),
+            "locations": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "location_id": types.Schema(type=types.Type.STRING),
+                        "name": types.Schema(type=types.Type.STRING),
+                        "anchor_tags": types.Schema(
+                            type=types.Type.STRING,
+                            description="3-5 signature visual anchors: key props, materials, architecture, and lighting that uniquely define this room/space in English."
+                        )
+                    },
+                    required=["location_id", "name", "anchor_tags"]
+                )
+            ),
         },
-        required=["characters"]
+        required=["characters", "locations"]
     )
     
     # Character Pass: Try Gemini first, fallback to DeepSeek if Gemini fails
@@ -332,6 +360,9 @@ Naming rule: For 'character_id' and 'name', use only the character's first name 
                     stage["trait_tags"] = _translate_hindi_prompts(stage.get("trait_tags", ""))
                     clean_ref = _translate_hindi_prompts(base_prompt)
                     stage["reference_prompt"] = f"{global_style}, {clean_ref}"
+    if "locations" in result:
+        for loc in result["locations"]:
+            loc["anchor_tags"] = _translate_hindi_prompts(loc.get("anchor_tags", ""))
                     
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=4, ensure_ascii=False)
@@ -497,9 +528,9 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
         for c in char_data.get("characters", []) for s in c.get("age_stages", [])
     ) or "(none)"
     
-    loc_refs = "\\n".join(
-        f"- location_id: {l.get('location_id')} | variant_id: {v.get('variant_id')} | trait_tags: {v.get('trait_tags')}"
-        for l in char_data.get("locations", []) for v in l.get("variants", [])
+    loc_refs = "\n".join(
+        f"- location_id: {l.get('location_id')} | name: {l.get('name')} | anchor_tags: {l.get('anchor_tags')}"
+        for l in char_data.get("locations", [])
     ) or "(none)"
     
     pacing_rule = "CINEMATIC PACING (MAX 8 SECONDS PER SCENE). Target 4-7 seconds per scene. If an action or dialogue exceeds 8 seconds, you MUST split it into a 3-shot cinematic sequence (e.g., Wide establishing shot, Medium shot, Extreme Close-Up) covering the same event from different camera angles. Never let a single scene exceed 8 seconds."
@@ -518,6 +549,7 @@ def run_director_pass(story_text, transcript_data, char_data, output_path, sfx_l
                         "start_time": types.Schema(type=types.Type.NUMBER),
                         "end_time": types.Schema(type=types.Type.NUMBER),
                         "scene_type": types.Schema(type=types.Type.STRING, enum=["intro", "dialogue", "discovery", "emotional", "description", "action"]),
+                        "location_id": types.Schema(type=types.Type.STRING, description="Matching location_id from LOCKED LOCATIONS, or 'outdoor_generic' if an unlisted outdoor transition scene."),
                         "characters_present": types.Schema(
                             type=types.Type.ARRAY, items=types.Schema(
                                 type=types.Type.OBJECT, properties={"character_id": types.Schema(type=types.Type.STRING), "stage_id": types.Schema(type=types.Type.STRING)}
@@ -588,7 +620,14 @@ AVAILABLE SFX LIBRARY:\n{sfx_refs}
 
 RULES:
 1. PACING: {pacing_rule}. Set 'start_time' and 'end_time' strictly from the transcript.
-2. PROMPT FORMAT : You MUST format every single `visual_prompt` EXACTLY using this strict comma-separated template. Do NOT write natural prose. Do NOT include any art style descriptions. Fill in every section perfectly and separate them with commas: `Character's exact trait_tags and appearance, Single frozen action, Surrounding environment and location trait_tags, Character emotion, Camera angle/shot type`.
+2. PROMPT FORMAT (CONNECTED RELATIONAL CLAUSES): You MUST format each `visual_prompt` using comma-separated descriptive clauses that organically connect the character to the environment. Do NOT write isolated floating tags (e.g. NEVER write 'man, standing, shop').
+Every visual prompt must combine these connected elements separated by commas:
+- Character & Trait Tags: First name of the character and their key appearance/clothing tags (e.g. 'Ramesh, middle-aged Indian man with graying hair in a simple cream cotton kurta').
+- Physical Interaction with Setting: The character actively interacting with the room or props (e.g. 'leaning against the weathered dark teakwood counter', 'sitting on a wooden stool while examining a roll of red silk', 'walking past the tall cloth shelves'). Never leave the character floating detached in empty space.
+- Location Anchors: Seamlessly integrate the locked location's signature anchor_tags (props, materials, distinctive walls/scenery from LOCKED LOCATIONS).
+- Shared Environmental Lighting: Explicitly describe how the setting's light source illuminates both the character and the room (e.g. 'warm afternoon sunlight streaming through the storefront doorway casting soft shadows across his face and the rustic wooden counter').
+- Emotion & Shot Type: Character's facial expression, followed by the camera angle (e.g. 'thoughtful expression, cinematic medium shot with natural depth of field').
+Do NOT include any art style descriptions (like anime, 3D, or Studio Ghibli) as they are added globally.
 3. CHARACTERS: Maximum 3 characters present in any single scene.
 4. COVERAGE: You MUST cover the ENTIRE transcript provided. Your first scene must start at the first word's timestamp and your last scene must end at the last word's timestamp. Do not skip any part of the transcript.
 5. Naming rule: In visual_prompt, only use first names for characters.
