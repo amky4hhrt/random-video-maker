@@ -849,22 +849,152 @@ def _resolve_triggers(trigger_words, words, search_after_index=-1):
                     
     return None
 
-def run_music_pass(story_text, transcript_data, output_path, sfx_lib_path):
-    print("  🎵 Running Music Pass (Single Track)...")
-    from google.genai import types
-    client = get_gemini_client()
+def _load_and_sync_music_library(music_lib_path=None):
+    """
+    Loads master music library from music/music.json (or legacy music/music_library.json).
+    Auto-discovers any user-uploaded audio files (.mp3, .wav, .ogg, .flac, .m4a) in music/
+    and registers them so the AI Music Director knows they exist.
+    """
+    music_library = {}
+    if not music_lib_path:
+        return music_library
+        
+    p = Path(music_lib_path)
+    music_dir = p if p.is_dir() else p.parent
+    music_file = music_dir / "music.json"
     
-    sys_inst = """You are an Elite Film Composer. 
-Analyze the overall emotional arc of this story.
-Generate a single, highly descriptive `overall_music_prompt` for the entire video.
-The prompt should describe the instruments, tempo, and mood. The user will use this prompt to generate the background music track."""
+    # Fallback to legacy music_library.json if music.json doesn't exist
+    if not music_file.exists():
+        legacy_file = music_dir / "music_library.json"
+        if legacy_file.exists():
+            music_file = legacy_file
+            
+    if music_file.exists():
+        try:
+            with open(music_file, "r", encoding="utf-8") as f:
+                raw_data = json.load(f)
+                for k, v in raw_data.items():
+                    if isinstance(v, dict):
+                        emotion = v.get("emotion") or v.get("mood") or k
+                        desc = v.get("description") or v.get("music_prompt") or emotion
+                        prompt = v.get("music_prompt") or v.get("prompt") or desc
+                        fn = v.get("filename") or f"{k}.mp3"
+                        music_library[k] = {
+                            "track_id": k,
+                            "filename": fn,
+                            "emotion": emotion,
+                            "description": desc,
+                            "music_prompt": prompt
+                        }
+                    elif isinstance(v, str):
+                        music_library[k] = {
+                            "track_id": k,
+                            "filename": f"{k}.mp3",
+                            "emotion": k,
+                            "description": v,
+                            "music_prompt": v
+                        }
+        except Exception as e:
+            print(f"  ⚠️ Could not load Music library: {e}")
+            music_library = {}
+
+    # Auto-Discovery: Scan music_dir for any user-uploaded audio files
+    audio_exts = (".mp3", ".wav", ".ogg", ".flac", ".m4a")
+    newly_discovered = False
+    
+    if music_dir.exists():
+        try:
+            for item in music_dir.iterdir():
+                if item.is_file() and item.suffix.lower() in audio_exts:
+                    track_id = item.stem.lower().strip()
+                    if track_id not in music_library:
+                        human_desc = track_id.replace("_", " ").capitalize()
+                        music_library[track_id] = {
+                            "track_id": track_id,
+                            "filename": item.name,
+                            "emotion": human_desc,
+                            "description": f"User background track: {human_desc}",
+                            "music_prompt": f"[Instrumental], Atmospheric background music, {human_desc}, cinematic texture, no vocals"
+                        }
+                        newly_discovered = True
+                        print(f"    🎵 Auto-discovered music track in music/: {track_id} ({item.name})")
+        except Exception as e:
+            print(f"  ⚠️ Error scanning music directory: {e}")
+
+    # Canonical save if newly discovered or canonical missing
+    canonical_file = music_dir / "music.json"
+    if newly_discovered or not canonical_file.exists():
+        try:
+            with open(canonical_file, "w", encoding="utf-8") as f:
+                json.dump(music_library, f, indent=4, ensure_ascii=False)
+            if newly_discovered:
+                print("    ✨ Auto-registered new music file(s) into music/music.json")
+        except Exception as e:
+            print(f"  ⚠️ Could not save canonical music.json: {e}")
+            
+    return music_library
+
+def run_music_pass(story_text, transcript_data, output_path, music_lib_path=None):
+    print("  🎵 Running Music Pass (Multi-Emotion Cinematic Score)...")
+    from google.genai import types
+    
+    # Load and sync music library
+    music_library = _load_and_sync_music_library(music_lib_path)
+    
+    p = Path(music_lib_path) if music_lib_path else Path("music")
+    music_dir = p if p.is_dir() else p.parent
+    
+    music_refs = "\n".join(
+        f"- track_id: {k} | emotion: {v.get('emotion')} | description: {v.get('description')}"
+        for k, v in music_library.items()
+    ) if music_library else "(none)"
+    
+    words = transcript_data.get("words", transcript_data) if isinstance(transcript_data, dict) else transcript_data
+    total_dur = words[-1]["end"] if words else 300.0
+    
+    sys_inst = f"""You are an Elite Film Score Composer and Music Director.
+Analyze the emotional narrative arc of the full story from start to finish.
+The total duration of the voiceover audio is {total_dur:.1f} seconds.
+
+AVAILABLE MUSIC LIBRARY:
+{music_refs}
+
+RULES:
+1. MACRO-PACING (MINIMUM 60 SECONDS PER SEGMENT):
+   - Background music must NOT change rapidly. Divide the entire timeline into 2 to 4 major emotional chapters/acts (e.g. Act 1: Introduction/Mystery -> Act 2: Rising Tension/Crisis -> Act 3: Emotional Climax/Resolution).
+   - Each segment MUST be at least 60 seconds long.
+   - The first segment must start at 0.0s, and the final segment must end at {total_dur:.1f}s. There must be NO gaps between segments.
+2. TRACK SELECTION:
+   - Check the AVAILABLE MUSIC LIBRARY. If an existing track matches the mood of a chapter, reuse its exact 'track_id' and set 'is_new' to false, with 'music_prompt' set to 'none'.
+   - If NO existing track fits the specific emotional tone of that chapter:
+     * Propose a new snake_case 'track_id' (e.g. 'ocean_storm_01', 'royal_court_01').
+     * Set 'is_new' to true.
+     * Write a 4-pillar instrumental prompt for an AI music generator:
+       Format: `[Instrumental], Specific emotion + tempo BPM, 2-3 ambient acoustic instruments, subtle background dynamics for narration bed, no vocals`.
+"""
 
     schema = types.Schema(
         type=types.Type.OBJECT,
         properties={
-            "overall_music_prompt": types.Schema(type=types.Type.STRING)
+            "music_timeline": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "segment_id": types.Schema(type=types.Type.INTEGER),
+                        "start_time": types.Schema(type=types.Type.NUMBER),
+                        "end_time": types.Schema(type=types.Type.NUMBER),
+                        "mood": types.Schema(type=types.Type.STRING),
+                        "track_id": types.Schema(type=types.Type.STRING),
+                        "narrative_reason": types.Schema(type=types.Type.STRING),
+                        "is_new": types.Schema(type=types.Type.BOOLEAN),
+                        "music_prompt": types.Schema(type=types.Type.STRING, description="4-pillar instrumental prompt if is_new is true, otherwise 'none'.")
+                    },
+                    required=["segment_id", "start_time", "end_time", "mood", "track_id", "is_new"]
+                )
+            )
         },
-        required=["overall_music_prompt"]
+        required=["music_timeline"]
     )
     
     try:
@@ -879,11 +1009,86 @@ The prompt should describe the instruments, tempo, and mood. The user will use t
             print(f"  ❌ Error in Music Pass: {e}")
             return False
             
-    import json
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=4, ensure_ascii=False)
+    # Process segments and inspect disk availability
+    timeline = result.get("music_timeline", [])
+    missing_tracks_to_generate = []
+    new_tracks_to_register = {}
+    
+    audio_exts = ('.mp3', '.wav', '.m4a', '.flac', '.ogg')
+    
+    for seg in timeline:
+        tid = str(seg.get("track_id", "")).strip()
+        fn = f"{tid}.mp3"
+        seg["filename"] = fn
         
-    print("  ✅ Simplified Music Pass complete.")
+        # Check if file exists in music_dir
+        exists = False
+        if music_dir.exists():
+            for ext in audio_exts:
+                if (music_dir / f"{tid}{ext}").exists():
+                    exists = True
+                    seg["filename"] = f"{tid}{ext}"
+                    break
+                    
+        if exists:
+            seg["status"] = "available"
+        else:
+            seg["status"] = "needs_generation"
+            prompt = seg.get("music_prompt", "")
+            if not prompt or prompt.lower() in ["none", "null"]:
+                prompt = f"[Instrumental], Atmospheric background music for {seg.get('mood', tid)}, subtle dynamics, no vocals"
+            
+            missing_info = {
+                "track_id": tid,
+                "required_filename": fn,
+                "save_location": str(music_dir / fn),
+                "time_ranges": [f"{seg.get('start_time')}s - {seg.get('end_time')}s"],
+                "prompt": prompt
+            }
+            if not any(m["track_id"] == tid for m in missing_tracks_to_generate):
+                missing_tracks_to_generate.append(missing_info)
+                
+            if tid not in music_library:
+                new_tracks_to_register[tid] = {
+                    "track_id": tid,
+                    "filename": fn,
+                    "emotion": seg.get("mood", tid),
+                    "description": f"Custom track for {seg.get('narrative_reason', tid)}",
+                    "music_prompt": prompt
+                }
+
+    # Register any newly proposed tracks into master music.json
+    if new_tracks_to_register:
+        music_library.update(new_tracks_to_register)
+        canonical_file = music_dir / "music.json"
+        try:
+            with open(canonical_file, "w", encoding="utf-8") as f:
+                json.dump(music_library, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"  ⚠️ Could not update master music.json: {e}")
+
+    final_blueprint = {
+        "status": "ACTION_REQUIRED" if missing_tracks_to_generate else "READY_TO_RENDER",
+        "total_duration": total_dur,
+        "missing_tracks_to_generate": missing_tracks_to_generate,
+        "music_timeline": timeline
+    }
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(final_blueprint, f, indent=4, ensure_ascii=False)
+        
+    print(f"  ✅ Music Pass complete! {len(timeline)} emotional segment(s) planned.")
+    if missing_tracks_to_generate:
+        print(f"\n  ⚠️ OPTIONAL MUSIC GENERATION ({Path(output_path).name}):")
+        print(f"  The AI suggested {len(missing_tracks_to_generate)} custom mood track(s):")
+        for m in missing_tracks_to_generate:
+            print(f"    - Track: {m['required_filename']}")
+            print(f"      Save to: {m['save_location']}")
+            print(f"      Prompt: {m['prompt']}\n")
+        print("  ℹ️ You can generate and save them in music/, or skip—the renderer will auto-fallback smoothly!\n")
+    else:
+        print("  ✨ All background music tracks confirmed available in music/!\n")
+        
     return True
 
 def _sanitize_hindi_story_and_words(story_text, transcript_data):
@@ -985,7 +1190,7 @@ def generate_blueprints(project_dir, is_short=False):
     
     # Paths to global libraries
     base_dir = proj.parent
-    mus_lib = base_dir / "music" / "music_library.json"
+    mus_lib = base_dir / "music" / "music.json"
     sfx_lib = base_dir / "sfx" / "sfx.json"
     
     try:
@@ -993,18 +1198,18 @@ def generate_blueprints(project_dir, is_short=False):
             char_data = run_character_pass(clean_story, char_out)
         else:
             with open(char_out, "r", encoding="utf-8") as f: char_data = json.load(f)
-            print("  \u2705 Skipping Character Pass (character_prompts.json already exists)")
+            print("  ✅ Skipping Character Pass (character_prompts.json already exists)")
 
         if not vid_out.exists():
             run_director_pass(clean_story, clean_transcript, char_data, vid_out, sfx_lib_path=sfx_lib, is_short=is_short)
         else:
-            print("  \u2705 Skipping Director Pass (video_blueprint.json already exists)")
+            print("  ✅ Skipping Director Pass (video_blueprint.json already exists)")
         
         # Shorts might not need a complex music pass in the same way, but let's run it anyway
         if not mus_out.exists():
-            run_music_pass(clean_story, clean_transcript, mus_out, sfx_lib)
+            run_music_pass(clean_story, clean_transcript, mus_out, music_lib_path=mus_lib)
         else:
-            print("  \u2705 Skipping Music Pass (music_blueprint.json already exists)")
+            print("  ✅ Skipping Music Pass (music_blueprint.json already exists)")
         
         print("  \u2705 Blueprints successfully generated (or already exist)!")
         return True

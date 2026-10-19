@@ -252,7 +252,7 @@ def main():
         print("NEXT STEPS:")
         print("1. Review character_prompts.json and video_blueprint.json (camera movements & transitions already assigned!)")
         print("2. Generate visual assets and save them in hindi_short_assets/ (e.g. 1.jpg, 2.mp4)")
-        print("3. Generate a background music track using music_blueprint.json and save it in hindi_short_assets/")
+        print("3. (Optional) Check music_blueprint.json: multi-emotion score is assigned from music/ (generate any missing tracks, or render with auto-fallback)")
         print("4. (Optional) Check sfx_blueprint.json: generate any needed SFX with ElevenLabs and save in sfx/")
         print("5. Run this script again to render your video immediately!")
         

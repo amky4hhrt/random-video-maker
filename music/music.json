@@ -1,0 +1,107 @@
+{
+    "1": {
+        "track_id": "1",
+        "filename": "1.mp3",
+        "emotion": "numb_grief",
+        "description": "Solo melancholic sparse piano in deep minor chords for sorrow, tragedy, and grief",
+        "prompt": "[Instrumental], Melancholic sparse solo piano, very slow tempo 60 BPM, deep minor chords, raw reflective piano sound, no drums, no vocals"
+    },
+    "2": {
+        "track_id": "2",
+        "filename": "2.mp3",
+        "emotion": "unveiling_mystery",
+        "description": "Subtle evolving cinematic soundscape with low synth pad, pizzicato strings, and minimalist piano motif for curiosity and secrets",
+        "prompt": "[Instrumental], Subtle evolving cinematic soundscape, slow tempo 75 BPM, sustained synth pad, pizzicato strings, minimalist piano motif, curiosity, no vocals"
+    },
+    "3": {
+        "track_id": "3",
+        "filename": "3.mp3",
+        "emotion": "rising_paranoia",
+        "description": "Slow-burn suspense with low cello, bass, and creeping synth texture with irregular percussive pulses for impending danger",
+        "prompt": "[Instrumental], Slow-burn cinematic suspense, slow tempo 70 BPM, low cello, dark bass, creeping synth texture, subtle irregular pulses, no vocals"
+    },
+    "4": {
+        "track_id": "4",
+        "filename": "4.mp3",
+        "emotion": "bittersweet_reflection",
+        "description": "Somber reflective piece blending acoustic guitar, pizzicato strings, and melancholic cello for wistful regret and tension",
+        "prompt": "[Instrumental], Somber reflective cinematic music, moderate tempo 80 BPM, acoustic guitar, pizzicato strings, melancholic cello melody, no vocals"
+    },
+    "5": {
+        "track_id": "5",
+        "filename": "5.mp3",
+        "emotion": "tense_discovery",
+        "description": "Slowly unfolding suspense with soft ticking percussion, low resonant drone, and pizzicato strings leading to revelation",
+        "prompt": "[Instrumental], Slowly unfolding suspense, slow tempo 75 BPM, soft percussive ticking, low resonant synth drone, pizzicato strings, tense discovery, no vocals"
+    },
+    "6": {
+        "track_id": "6",
+        "filename": "6.mp3",
+        "emotion": "shocking_confession",
+        "description": "Dark intense cinematic track with deep pulsing bass synths and brooding string ostinatos for dangerous revelation and conspiracy",
+        "prompt": "[Instrumental], Dark intense cinematic score, mid tempo 85 BPM, deep pulsing bass synths, brooding string ostinatos, light controlled percussion, serious, no vocals"
+    },
+    "7": {
+        "track_id": "7",
+        "filename": "7.mp3",
+        "emotion": "escalating_threat",
+        "description": "Accelerating suspense with driving rhythm, high-pitched tense strings, and low sustained bass for dawning realization and danger",
+        "prompt": "[Instrumental], Accelerating suspense thriller, driving rhythm, tense high-pitched strings, low sustained bass, escalating threat, no vocals"
+    },
+    "8": {
+        "track_id": "8",
+        "filename": "8.mp3",
+        "emotion": "surveillance_paranoia",
+        "description": "Cold atmospheric track with synthetic pads and persistent rhythmic pulse for secrecy, suspicion, and hidden eyes",
+        "prompt": "[Instrumental], Tense atmospheric ambient music, cold synthetic pads, subtle persistent rhythmic pulse, metallic accents, eerie silence, no vocals"
+    },
+    "9": {
+        "track_id": "9",
+        "filename": "9.mp3",
+        "emotion": "dread_of_truth",
+        "description": "Heavy dramatic score with deep resonant cello and ominous brass swells in slow march-like rhythm for sinister revelations and gravitas",
+        "prompt": "[Instrumental], Heavy dramatic cinematic score, deep resonant cello, ominous brass swells, slow march rhythm, dark truth, gravitas, no vocals"
+    },
+    "10": {
+        "track_id": "10",
+        "filename": "10.mp3",
+        "emotion": "immediate_danger",
+        "description": "Sharp intense thriller burst with staccato strings, aggressive brass hits, and urgent driving percussion for confrontation and urgency",
+        "prompt": "[Instrumental], Sharp intense action thriller, fast tempo 110 BPM, staccato strings, aggressive brass hits, driving urgent beat, confrontation, no vocals"
+    },
+    "11": {
+        "track_id": "11",
+        "filename": "11.mp3",
+        "emotion": "secret_exploration",
+        "description": "Atmospheric suspense with evolving synth textures, subtle percussive pulses, and rumbling bass for methodical discovery",
+        "prompt": "[Instrumental], Atmospheric suspenseful drone, evolving synth textures, subtle percussive pulses, rumbling low bass, espionage, contemplative tension, no vocals"
+    },
+    "12": {
+        "track_id": "12",
+        "filename": "12.mp3",
+        "emotion": "action_climax",
+        "description": "High-octane action thriller with fast driving percussion, heroic brass stabs, and swirling strings building to dramatic crescendo",
+        "prompt": "[Instrumental], High-octane action thriller, fast tempo 125 BPM, driving percussion, heroic brass stabs, swirling strings, dramatic crescendo, no vocals"
+    },
+    "13": {
+        "track_id": "13",
+        "filename": "13.mp3",
+        "emotion": "justice_served",
+        "description": "Grand sweeping string melody with triumphant brass for the conclusion of a struggle, justice, and closure",
+        "prompt": "[Instrumental], Powerful resolving cinematic track, grand sweeping strings, triumphant brass, moderate tempo 90 BPM, justice and closure, no vocals"
+    },
+    "14": {
+        "track_id": "14",
+        "filename": "14.mp3",
+        "emotion": "bittersweet_closure",
+        "description": "Tender gentle piano melody intertwined with warm sustained string chords for emotional acceptance, peace, and hopeful closure",
+        "prompt": "[Instrumental], Deeply emotional reflective cinematic score, slow gentle tempo 65 BPM, tender piano melody, warm sustained string chords, peaceful hopeful closure, no vocals"
+    },
+    "hopeful_turnaround_01": {
+        "track_id": "hopeful_turnaround_01",
+        "filename": "hopeful_turnaround_01.mp3",
+        "emotion": "quiet_optimism",
+        "description": "Gentle warm acoustic guitar picking with subtle rhythm for efficiency, quiet optimism, and renewed hope",
+        "prompt": "[Instrumental], Gentle warm acoustic guitar picking, subtle warm rhythm, quiet optimism, renewed hope, bright and peaceful, no vocals"
+    }
+}

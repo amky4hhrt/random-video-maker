@@ -187,15 +187,27 @@ def find_asset(input_dir, base_name, extensions):
     return None
 
 
-# ─── Final Audio Mix ──────────────────────────────────────────────
-def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_audio, total_duration, vid_bp=None):
-    temp_dir = os.path.dirname(output_audio)
-    
-    # Find Custom Music
+# ─── Multi-Track BGM Engine ───────────────────────────────────────
+def _prepare_composite_bgm(music_bp, music_dir, audio_dir, total_duration, temp_dir):
+    """
+    Builds a seamless composite background music track using music_blueprint.json timeline.
+    Crossfades between segments (3.5s crossfade).
+    Implements automatic fallback if any requested track is missing.
+    Falls back to custom music in audio_dir or available library tracks if needed.
+    """
     import glob
-    AUDIO_EXTENSIONS = ('.mp3', '.wav', '.m4a', '.flac')
+    AUDIO_EXTENSIONS = ('.mp3', '.wav', '.m4a', '.flac', '.ogg')
     
-    def search_for_music(search_dir):
+    # 1. Discover all available tracks in music_dir
+    available_library_tracks = []
+    if music_dir and os.path.exists(music_dir):
+        for ext in AUDIO_EXTENSIONS:
+            available_library_tracks.extend(glob.glob(os.path.join(music_dir, f"*{ext}")))
+    available_library_tracks.sort()
+
+    def search_for_custom_music(search_dir):
+        if not search_dir or not os.path.exists(search_dir):
+            return None
         for ext in AUDIO_EXTENSIONS:
             for f in glob.glob(os.path.join(search_dir, f"*{ext}")):
                 name = os.path.basename(f).lower()
@@ -203,15 +215,119 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
                     return f
         return None
 
-    custom_music_path = search_for_music(audio_dir)
+    timeline = music_bp.get("music_timeline", []) if isinstance(music_bp, dict) else []
     
-    # Hindi Fallback Logic
-    if not custom_music_path and "hindi_" in audio_dir:
-        fallback_dir = audio_dir.replace("hindi_", "english_")
-        if os.path.exists(fallback_dir):
-            custom_music_path = search_for_music(fallback_dir)
-            if custom_music_path:
-                print(f"  🎵 Using fallback English music: {os.path.basename(custom_music_path)}")
+    # If timeline is empty, check legacy custom music in audio_dir or fallback to library
+    if not timeline:
+        custom_music_path = search_for_custom_music(audio_dir)
+        if not custom_music_path and "hindi_" in audio_dir:
+            fallback_dir = audio_dir.replace("hindi_", "english_")
+            custom_music_path = search_for_custom_music(fallback_dir)
+        if custom_music_path:
+            return custom_music_path
+        elif available_library_tracks:
+            return available_library_tracks[0]
+        return None
+
+    # 2. Resolve audio file for each timeline segment
+    resolved_segments = []
+    for seg in timeline:
+        track_id = str(seg.get("track_id", "")).strip()
+        fn = seg.get("filename", f"{track_id}.mp3")
+        start_t = float(seg.get("start_time", 0.0))
+        end_t = float(seg.get("end_time", total_duration))
+        seg_dur = max(1.0, end_t - start_t)
+        
+        track_file = None
+        if music_dir and os.path.exists(music_dir):
+            track_file = find_asset(music_dir, track_id, AUDIO_EXTENSIONS)
+            if not track_file and fn:
+                cand = os.path.join(music_dir, fn)
+                if os.path.exists(cand):
+                    track_file = cand
+        if not track_file and audio_dir and os.path.exists(audio_dir):
+            track_file = find_asset(audio_dir, track_id, AUDIO_EXTENSIONS)
+
+        # Fallback if track file missing
+        if not track_file or not os.path.exists(track_file):
+            if available_library_tracks:
+                seg_idx = seg.get("segment_id", 1) - 1
+                fallback_track = available_library_tracks[seg_idx % len(available_library_tracks)]
+                print(f"  ⚠️ Music track '{track_id}' not found in music/. Auto-substituting '{os.path.basename(fallback_track)}' for [{start_t:.1f}s - {end_t:.1f}s].")
+                track_file = fallback_track
+            else:
+                custom = search_for_custom_music(audio_dir)
+                if custom:
+                    track_file = custom
+
+        if track_file and os.path.exists(track_file):
+            resolved_segments.append({
+                "track_file": track_file,
+                "start_time": start_t,
+                "end_time": end_t,
+                "duration": seg_dur,
+                "track_id": track_id
+            })
+
+    if not resolved_segments:
+        if available_library_tracks:
+            return available_library_tracks[0]
+        return None
+
+    # If only 1 segment resolved, use it directly
+    if len(resolved_segments) == 1:
+        print(f"  🎵 Using single background music track: {os.path.basename(resolved_segments[0]['track_file'])}")
+        return resolved_segments[0]["track_file"]
+
+    # 3. Multi-track crossfade assembly
+    print(f"  🎵 Assembling Multi-Emotion Score ({len(resolved_segments)} tracks) with seamless crossfades...")
+    crossfade_dur = 3.5
+    composite_bgm_path = os.path.join(temp_dir, "temp_composite_bgm.wav")
+
+    cmd = ["ffmpeg", "-y", "-threads", str(CPU_THREADS)]
+    n_segs = len(resolved_segments)
+    filter_chains = []
+
+    for i, seg in enumerate(resolved_segments):
+        fetch_dur = seg["duration"] + crossfade_dur if i < n_segs - 1 else seg["duration"]
+        cmd.extend(["-stream_loop", "-1", "-t", str(fetch_dur), "-i", seg["track_file"]])
+        filter_chains.append(f"[{i}:a]aresample=44100,aformat=channel_layouts=stereo[m{i}]")
+
+    # Build acrossfade chain
+    if n_segs == 2:
+        filter_chains.append(f"[m0][m1]acrossfade=d={crossfade_dur}:c1=tri:c2=tri[bgm_out]")
+    else:
+        filter_chains.append(f"[m0][m1]acrossfade=d={crossfade_dur}:c1=tri:c2=tri[cf1]")
+        for i in range(2, n_segs):
+            prev_tag = f"[cf{i-1}]"
+            curr_tag = f"[m{i}]"
+            out_tag = "[bgm_out]" if i == n_segs - 1 else f"[cf{i}]"
+            filter_chains.append(f"{prev_tag}{curr_tag}acrossfade=d={crossfade_dur}:c1=tri:c2=tri{out_tag}")
+
+    cmd.extend([
+        "-filter_complex", "; ".join(filter_chains),
+        "-map", "[bgm_out]",
+        "-t", str(total_duration),
+        "-c:a", "pcm_s16le",
+        composite_bgm_path
+    ])
+
+    try:
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        if os.path.exists(composite_bgm_path) and os.path.getsize(composite_bgm_path) > 1000:
+            print(f"  ✨ Multi-track score assembled successfully: {len(resolved_segments)} emotional chapters.")
+            return composite_bgm_path
+    except Exception as e:
+        print(f"  ⚠️ Warning: Multi-track crossfade failed ({e}). Falling back to primary track.")
+
+    return resolved_segments[0]["track_file"]
+
+# ─── Final Audio Mix ──────────────────────────────────────────────
+def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_audio, total_duration, vid_bp=None):
+    temp_dir = os.path.dirname(output_audio)
+    
+    # Build or resolve composite background music
+    custom_music_path = _prepare_composite_bgm(music_bp, music_dir, audio_dir, total_duration, temp_dir)
         
     # Collect valid SFX events from blueprint
     sfx_events = []
