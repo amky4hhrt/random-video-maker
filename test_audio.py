@@ -115,6 +115,24 @@ def run_test_audio_mix(asset_dir=None):
     output_dir = BASE_DIR / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # 4. Auto-sync and ensure music.json & sfx.json exist
+    try:
+        from py_files.ai_generator import _load_and_sync_music_library, _load_and_sync_sfx_library
+        _load_and_sync_music_library(str(music_dir / "music.json"))
+        _load_and_sync_sfx_library(str(sfx_dir / "sfx.json"))
+    except Exception as e:
+        # Fallback: ensure empty json files exist if ai_generator import fails
+        music_json = music_dir / "music.json"
+        if not music_json.exists():
+            music_dir.mkdir(parents=True, exist_ok=True)
+            with open(music_json, "w", encoding="utf-8") as f:
+                json.dump({}, f, indent=4)
+        sfx_json = sfx_dir / "sfx.json"
+        if not sfx_json.exists():
+            sfx_dir.mkdir(parents=True, exist_ok=True)
+            with open(sfx_json, "w", encoding="utf-8") as f:
+                json.dump({}, f, indent=4)
+
     output_file_output = output_dir / "test_audio.mp3"
     output_file_root   = BASE_DIR / "test_audio.mp3"
 
