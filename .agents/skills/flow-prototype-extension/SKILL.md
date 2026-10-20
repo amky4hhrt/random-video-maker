@@ -45,6 +45,13 @@ Attempting to clear a React-controlled `contenteditable` component by setting `.
     document.execCommand('delete', false, null);
     ```
 
+### 6. Collapsible Floating Panel (Minimize / Maximize)
+To prevent the extension widget from obstructing the Google Flow generation canvas or text editor:
+*   **One-Click Toggle:** Clicking the header bar or the `[ — ]` / `[ ＋ ]` button toggles between full view (300px width) and a compact bottom-right pill (`auto` width).
+*   **Live Minimized Status:** A `MutationObserver` watches `#flow-status` and surfaces a compact progress indicator in the minimized header (e.g. `• Scene 3 rendering...`) so users stay informed without taking up screen space.
+*   **State & Key Persistence:** The panel remembers its minimized/maximized state and auto-saves the entered Gemini API key in `localStorage` across page reloads.
+
 ## Maintenance Notes
 *   **Debugger Detachment:** `background.js` manages a `chrome.debugger` instance to send raw `windowsVirtualKeyCode: 13`. It attaches, fires the event, and immediately detaches. This is necessary to bypass trusted-event listeners without permanently holding the debugger and blocking user DevTools.
 *   **Character Mentions:** The wait times in `pasteText` and `pressKey` (1500ms to 2000ms) are critical. The Google Flow `@mention` dropdown is slow to hydrate; reducing these delays will cause the Enter key to fire before the character is selected.
+
