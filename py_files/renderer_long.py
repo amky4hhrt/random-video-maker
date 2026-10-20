@@ -33,6 +33,8 @@ def get_video_duration(path):
     except:
         return 0.0
 
+get_media_duration = get_video_duration
+
 def _detect_nvenc() -> bool:
     try:
         res = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
