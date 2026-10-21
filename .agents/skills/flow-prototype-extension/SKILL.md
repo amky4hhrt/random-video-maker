@@ -15,6 +15,7 @@ This skill provides comprehensive documentation on the inner workings of the `Fl
 The extension UI supports two distinct operational modes:
 *   **Test Mode:** Allows manual submission of a single prompt and optional character ID(s) to verify the fallback logic without running a full JSON payload.
 *   **Full Automation:** Processes a 40-scene `video_blueprint.json` end-to-end, parsing scene objects and automatically triggering the fallback loop on any failed scene.
+*   **Optimized Pacing (50s Timer):** Each scene rendering cycle counts down a streamlined 50-second generation timeout (reduced from 60s). Artificial 3-second bot-detection delays have been removed for instant execution between scenes and fallbacks.
 
 ### 2. The Gemini Fallback Loop (`askGeminiForVariations`)
 When a policy error is detected, the extension calls the `gemini-3.5-flash` model via `generativelanguage.googleapis.com/v1beta`.
