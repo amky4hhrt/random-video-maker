@@ -15,13 +15,13 @@ This skill provides comprehensive documentation on the inner workings of the `Fl
 The extension UI supports two distinct operational modes:
 *   **Test Mode:** Allows manual submission of a single prompt and optional character ID(s) to verify the fallback logic without running a full JSON payload.
 *   **Full Automation:** Processes a 40-scene `video_blueprint.json` end-to-end, parsing scene objects and automatically triggering the fallback loop on any failed scene.
-*   **Optimized Pacing (50s Timer):** Each scene rendering cycle counts down a streamlined 50-second generation timeout (reduced from 60s). Artificial 3-second bot-detection delays have been removed for instant execution between scenes and fallbacks.
+*   **Dynamic 10s Polling & Early Exit (`pollGenerationStatus`):** Replaces rigid countdown timers with a 10-second polling cycle (up to 6 checks = 60s max). The moment newly generated images appear, they are automatically downloaded and the prompter immediately advances to the next scene. If no image or error appears after 6 checks (60s), it times out and triggers fallback or cleanly skips.
 
 ### 2. The Gemini Fallback Loop (`askGeminiForVariations`)
-When a policy error is detected, the extension calls the `gemini-3.5-flash` model via `generativelanguage.googleapis.com/v1beta`.
+When a policy error or timeout is detected, the extension calls the `gemini-3.5-flash` model via `generativelanguage.googleapis.com/v1beta`.
 *   It feeds the AI the exact blocked prompt and asks for 5 sanitized variations formatted as a JSON array.
 *   It then loops through each variation (typing the new text and re-typing any `characters_present` `@mentions`).
-*   It monitors each variation for 45 seconds. If an error is caught, it moves to the next. If it passes, it breaks the loop and resumes standard execution.
+*   It monitors each variation using the same dynamic 10s polling cycle (max 6 checks / 60s). If an image generates, it downloads it and advances. If an error is caught or it times out, it moves to the next variation. If all variations fail or time out, the scene is skipped cleanly without blocking.
 
 ### 3. The Shadow-Piercing Error Counter (`getErrorCount`)
 Google Web Components often utilize deeply nested Shadow DOMs that cannot be searched via standard `MutationObserver` or `document.body.innerText`.
