@@ -161,7 +161,8 @@ The audio engine applies broadcast-standard multi-track mixing:
 1. **Loudness Normalization:** Voiceover is normalized to broadcast standard (-14 LUFS):
    `[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,apad,asplit[vo_norm][vo_sc]`
 2. **Native Sidechain Ducking (`sidechaincompress`):** Background music volume is dynamically dipped whenever the voiceover speaks, and gently swells during dramatic pauses:
-   `[bgm_resampled][vo_sc]sidechaincompress=threshold=-20dB:ratio=2.5:attack=100:release=1000[bgm_ducked]`
+   - *Baseline Volume:* Scaled to `volume=0.525` (+50% boost over legacy 0.35).
+   - Filter: `[bgm_resampled][vo_sc]sidechaincompress=threshold=-20dB:ratio=2.5:attack=100:release=1000[bgm_ducked]`
    - *Attack (100ms):* Smooth, immediate dip when speech starts.
    - *Release (1000ms):* 1-second gentle swell filling silent narrative pauses.
 3. **Dynamic SFX Alignment:** Sound effects from `sfx_blueprint.json` are delay-shifted to their exact scene timestamps using `adelay` and mixed into an SFX bed (`amix`).

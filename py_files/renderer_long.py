@@ -371,7 +371,7 @@ def generate_audio_mix(audio_dir, vo_path, music_bp, music_dir, sfx_dir, output_
     if bgm_input_idx is not None:
         # VO normalizes & splits for sidechain ducking trigger
         filter_sections.append("[0:a]aresample=44100,loudnorm=I=-14:LRA=11:TP=-1.5,apad,asplit[vo_norm][vo_sc]")
-        filter_sections.append(f"[{bgm_input_idx}:a]aresample=44100,volume=0.35[bgm_resampled]")
+        filter_sections.append(f"[{bgm_input_idx}:a]aresample=44100,volume=0.525[bgm_resampled]")
         filter_sections.append("[bgm_resampled][vo_sc]sidechaincompress=threshold=-20dB:ratio=2.5:attack=100:release=1000[bgm_ducked]")
         
         if sfx_events:

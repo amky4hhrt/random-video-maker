@@ -52,6 +52,19 @@ To prevent the extension widget from obstructing the Google Flow generation canv
 *   **Live Minimized Status:** A `MutationObserver` watches `#flow-status` and surfaces a compact progress indicator in the minimized header (e.g. `• Scene 3 rendering...`) so users stay informed without taking up screen space.
 *   **State & Key Persistence:** The panel remembers its minimized/maximized state and auto-saves the entered Gemini API key in `localStorage` across page reloads.
 
+### 7. Robust Generation Detection & Guaranteed JPEG Pipeline
+Solves early false-positive image detection, unwanted thumbnail downloads, and WebM/missing-extension errors:
+*   **Configurable "Images / Scene" Selector:** Users can choose how many images to save per prompt (defaults to `2`, range `1` to `4`), with the preference saved in `localStorage`.
+*   **Immutable URL Set Snapshotting (`initialUrls = new Set()`):** Snapshots all existing image and video URLs before pressing Enter. Completely immune to React unmounting/remounting DOM nodes, preventing older scene images from ever being falsely detected as newly rendered images.
+*   **Active Generation Awareness (`isGoogleFlowGenerating`):** Actively monitors Google Flow's progress spinners, circular loading rings, and stop/cancel buttons. The polling loop will **never** declare victory while Google Flow is actively rendering.
+*   **Strict Native Resolution Filter:** Requires native pixel dimensions `naturalWidth >= 512` and `naturalHeight >= 512` (with `complete === true`), discarding loading skeleton shimmers and CSS layout placeholders (`clientWidth`).
+*   **Character Mention Modal Auto-Dismissal (`handleCharacterMention`):** Automatically detects and clicks Google Flow's **"Add to prompt"** button strictly within active modal dialogs (`[role="dialog"]`), avoiding header icon buttons (such as the top-right `+` Add menu).
+*   **Dual-Action Prompt Submitter (`submitPrompt`):** Re-focuses the prompt editor, dispatches hardware Enter via `chrome.debugger`, and automatically clicks the circular submit arrow button (`➔`) beside the prompt box to guarantee generation triggers every time.
+*   **Guaranteed JPEG Canvas Pipeline:** Prior to downloading, the rendered media is drawn onto an offscreen HTML5 `<canvas>` and exported as `image/jpeg` Data URLs (`canvas.toDataURL("image/jpeg", 0.95)`). This guarantees Chrome never downloads video streams, strips extensions (fixing file `97`), or misidentifies MIME types.
+*   **Blueprint `scene_id` Resolution:** Uses `scene.scene_id` directly from the blueprint JSON rather than the loop index `i + 1`. This ensures filtered ranges (e.g. running Scene 2) name files correctly.
+*   **Single vs Multiple Naming:** If 1 image is saved per prompt, files are cleanly named `{scene_id}.jpg` (e.g. `1.jpg`, `2.jpg`). If multiple images are saved, files use the `_x` candidate numbering (e.g. `1_1.jpg`, `1_2.jpg`, `2_1.jpg`, `2_2.jpg`).
+*   **Strict Slicing:** Only downloads the first $N$ primary candidate images and prevents downloading extra thumbnails.
+
 ## Maintenance Notes
 *   **Debugger Detachment:** `background.js` manages a `chrome.debugger` instance to send raw `windowsVirtualKeyCode: 13`. It attaches, fires the event, and immediately detaches. This is necessary to bypass trusted-event listeners without permanently holding the debugger and blocking user DevTools.
 *   **Character Mentions:** The wait times in `pasteText` and `pressKey` (1500ms to 2000ms) are critical. The Google Flow `@mention` dropdown is slow to hydrate; reducing these delays will cause the Enter key to fire before the character is selected.
