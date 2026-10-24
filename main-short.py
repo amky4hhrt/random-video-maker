@@ -72,12 +72,25 @@ def main():
             print("❌ Cannot proceed: story.txt and voiceover.* are required in english_short_assets/")
             sys.exit(1)
             
+        transcript_generated = False
         if trans.exists():
             print("  ✅ Transcript already exists.")
         else:
             if not generate_transcript(audio_file, str(story_file), str(trans), language="en"):
                 print("❌ English transcription failed.")
                 sys.exit(1)
+            transcript_generated = True
+
+        if transcript_generated:
+            print("\n" + "=" * 55)
+            print("⏸️ BREAKPOINT: transcript.json generated successfully!")
+            print(f"📁 Saved to: {trans}")
+            print("🛑 Stopping execution as requested before AI generation.")
+            print("\nNEXT STEPS:")
+            print("1. Inspect and verify transcript.json timestamps/words.")
+            print("2. Run this script again when ready to proceed with AI Blueprint Generation.")
+            print("=" * 55)
+            sys.exit(0)
                 
         print("\n🧠 Generating English Blueprints...")
         if not generate_blueprints(str(ENG_ASSETS), is_short=True):
@@ -236,12 +249,25 @@ def main():
             print("❌ Cannot proceed: story.txt and voiceover.* are required in hindi_short_assets/")
             sys.exit(1)
             
+        transcript_generated = False
         if trans.exists():
             print("  ✅ Transcript already exists.")
         else:
             if not generate_transcript(audio_file, str(story_file), str(trans), language="hi"):
                 print("❌ Hindi transcription failed.")
                 sys.exit(1)
+            transcript_generated = True
+
+        if transcript_generated:
+            print("\n" + "=" * 55)
+            print("⏸️ BREAKPOINT: transcript.json generated successfully!")
+            print(f"📁 Saved to: {trans}")
+            print("🛑 Stopping execution as requested before AI generation.")
+            print("\nNEXT STEPS:")
+            print("1. Inspect and verify transcript.json timestamps/words.")
+            print("2. Run this script again when ready to proceed with AI Blueprint Generation.")
+            print("=" * 55)
+            sys.exit(0)
                 
         print("\n🧠 Generating Hindi Blueprints...")
         if not generate_blueprints(str(HIN_ASSETS), is_short=True):

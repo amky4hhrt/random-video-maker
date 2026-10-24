@@ -22,8 +22,16 @@ The pipeline processes raw narrative stories and audio voiceovers into fully ren
            │
            ▼
 ┌────────────────────────────────────────────────────────┐
-│  STAGE 1: Complete Blueprint Generation                │
+│  STAGE 1A: Whisper Transcription & Alignment           │
 │  - Whisper word-level transcription                    │
+│  - Exact story text alignment                          │
+│  - Outputs transcript.json                             │
+│  ⏸️ BREAKPOINT: Execution halts (review transcript)    │
+└──────────────────────────┬─────────────────────────────┘
+                           │ (re-run script)
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│  STAGE 1B: Complete Blueprint Generation               │
 │  - AI Word-level content sanitization                  │
 │  - Character Pass (English traits)                     │
 │  - Director Pass (Gemini / DeepSeek):                  │
